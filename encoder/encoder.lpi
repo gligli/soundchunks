@@ -34,9 +34,11 @@
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
+            <Style Value="1"/>
             <SyntaxOptions>
               <SyntaxMode Value="Delphi"/>
               <IncludeAssertionCode Value="True"/>
+              <TypedAddress Value="True"/>
             </SyntaxOptions>
           </Parsing>
           <CodeGeneration>
@@ -76,9 +78,11 @@
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
+            <Style Value="1"/>
             <SyntaxOptions>
               <SyntaxMode Value="Delphi"/>
               <IncludeAssertionCode Value="True"/>
+              <TypedAddress Value="True"/>
             </SyntaxOptions>
           </Parsing>
           <CodeGeneration>
@@ -111,18 +115,20 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="..\lame_test\mstest.wav ..\ms.wav -v"/>
+        <CommandLineParams Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs16 -br64"/>
+        <LaunchingApplication PathPlusParams="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="..\lame_test\mstest.wav ..\ms.wav -v"/>
+            <CommandLineParams Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs16 -br64"/>
+            <LaunchingApplication PathPlusParams="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
           </local>
         </Mode0>
       </Modes>
     </RunParams>
-    <Units Count="3">
+    <Units Count="5">
       <Unit0>
         <Filename Value="encoder.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -135,6 +141,14 @@
         <Filename Value="extern.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit2>
+      <Unit3>
+        <Filename Value="orthogonal_kmeans.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit3>
+      <Unit4>
+        <Filename Value="mtpool.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit4>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -149,10 +163,11 @@
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Parsing>
+      <Style Value="1"/>
       <SyntaxOptions>
-        <SyntaxMode Value="Delphi"/>
         <IncludeAssertionCode Value="True"/>
         <CPPInline Value="False"/>
+        <TypedAddress Value="True"/>
       </SyntaxOptions>
     </Parsing>
     <CodeGeneration>

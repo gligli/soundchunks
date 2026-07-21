@@ -1,6 +1,8 @@
 unit extern;
 
-{$mode objfpc}{$H+}
+{$mode ObjFPC}{$H+}
+{$ModeSwitch advancedrecords}
+{$TYPEDADDRESS ON}
 
 interface
 
@@ -8,17 +10,9 @@ uses
   logger, Windows, Classes, SysUtils, Types, Process, strutils, math;
 
 type
-  TFloat = Single;
-
-  TFloatDynArray = array of TFloat;
-  TFloatDynArray2 = array of TFloatDynArray;
   TDoubleDynArray2 = array of TDoubleDynArray;
   TDoubleDynArray3 = array of TDoubleDynArray2;
   TSmallIntDynArray2 = array of TSmallIntDynArray;
-  PFloat = ^TFloat;
-  PPFloat = ^PFloat;
-  PFloatDynArray = ^TFloatDynArray;
-  PFloatDynArray2 = ^TFloatDynArray2;
 
   { format of WAV file header }
   TWavHeader = record         { parameter description }
@@ -46,16 +40,6 @@ type
       { for 16 bit stereo = sleft[0],sright[0],sleft[1],sright[1]... :word}
   end;
 
-  TDLUserPal = array[0..2, 0..65535] of Byte;
-  PDLUserPal = ^TDLUserPal;
-
-  TYakmo = record
-  end;
-
-  PYakmo = ^TYakmo;
-
-  TYakmoCallback = procedure(cbData: Pointer); stdcall;
-
   TANNsplitRule = (
   		ANN_KD_STD = 0,      // the optimized kd-splitting rule
   		ANN_KD_MIDPT = 1,    // midpoint split
@@ -65,7 +49,7 @@ type
   		ANN_KD_SUGGEST = 5 // the authors' suggestion for best
   );
 
-  TANNFloat = Single;
+  TANNFloat = Double;
   PANNFloat = ^TANNFloat;
   PPANNFloat = ^PANNFloat;
   TANNFloatDynArray = array of TANNFloat;
@@ -98,22 +82,48 @@ type
 
   TCompareFunction=function(Item1,Item2,UserParameter:Pointer):Integer;
 
-procedure DoExternalSKLearn(Dataset: TFloatDynArray2;  ClusterCount, Precision: Integer; Compiled, PrintProgress: Boolean; var Clusters: TIntegerDynArray; var Centroids: TFloatDynArray2);
+  TSpinlock = LongInt;
+  PSpinLock = ^TSpinlock;
+
+  { TKRng }
+
+  TKRng = record
+    x, y, z, w: UInt64;
+    procedure init();
+    function randInt(): UInt64; // Xorshift RNG; http://www.jstatsoft.org/v08/i14/paper
+    function random(): Double;
+  end;
+
+procedure SpinEnter(Lock: PSpinLock); register; assembler;
+procedure SpinEnterSleep(Lock: PSpinLock); register; assembler;
+procedure SpinLeave(Lock: PSpinLock); register; assembler;
+
+procedure Exchange(var a, b: Integer); overload;
+procedure Exchange(var a, b: Cardinal); overload;
+procedure Exchange(var a, b: Double); overload;
+procedure Exchange(var a, b: Single); overload;
+
+function iDivDef(x, y, def: Integer): Integer;overload;inline;
+function iDivDef(x, y, def: Int64): Int64;overload;inline;
+function DivDef(x, y, def: Double): Double;inline;
+function NanDef(x, def: Double): Double; inline;
+
+function lerp(x, y, alpha: Double): Double; inline;
+
+function NumberOfProcessors: Integer;
+function HalfNumberOfProcessors: Integer;
+function QuarterNumberOfProcessors: Integer;
+
+procedure DoExternalSKLearn(Dataset: TDoubleDynArray2;  ClusterCount, Precision: Integer; Compiled, PrintProgress: Boolean; var Clusters: TIntegerDynArray; var Centroids: TDoubleDynArray2);
 procedure DoExternalSOX(AFNIn, AFNOut: String; SampleRate: Integer = 0);
 function DoExternalEAQUAL(AFNRef, AFNTest: String; PrintStats, UseDIX: Boolean; BlockLength: Integer): Double;
 
 procedure LZCompress(ASourceStream: TStream; PrintProgress, Decompress: Boolean; ADestStream: TStream);
 
-procedure GenerateSVMLightData(Dataset: TFloatDynArray2; Output: TStringList; Header: Boolean);
-function GenerateSVMLightFile(Dataset: TFloatDynArray2; Header: Boolean): String;
-function GetSVMLightLine(index: Integer; lines: TStringList): TFloatDynArray;
+procedure GenerateSVMLightData(Dataset: TDoubleDynArray2; Output: TStringList; Header: Boolean);
+function GenerateSVMLightFile(Dataset: TDoubleDynArray2; Header: Boolean): String;
+function GetSVMLightLine(index: Integer; lines: TStringList): TDoubleDynArray;
 function GetSVMLightClusterCount(lines: TStringList): Integer;
-
-function yakmo_create(k: Cardinal; restartCount: Cardinal; maxIter: Integer; initType: Integer; initSeed: Integer; doNormalize: Integer; isVerbose: Integer): PYakmo; stdcall; external 'yakmo_single.dll';
-procedure yakmo_destroy(ay: PYakmo); stdcall; external 'yakmo_single.dll';
-procedure yakmo_load_train_data(ay: PYakmo; rowCount: Cardinal; colCount: Cardinal; dataset: PPFloat); stdcall; external 'yakmo_single.dll';
-procedure yakmo_train_on_data(ay: PYakmo; pointToCluster: PInteger); stdcall; external 'yakmo_single.dll';
-procedure yakmo_get_centroids(ay: PYakmo; centroids: PPFloat); stdcall; external 'yakmo_single.dll';
 
 function ann_kdtree_create(pa: PPANNFloat; n, dd, bs: Integer; split: TANNsplitRule): PANNkdtree; cdecl; external 'ANN.dll';
 procedure ann_kdtree_destroy(akd: PANNkdtree); cdecl; external 'ANN.dll';
@@ -132,12 +142,171 @@ function InvariantFormatSettings: TFormatSettings;
 function internalRuncommand(p:TProcess;var outputstring:string;
                             var stderrstring:string; var exitstatus:integer; PrintOut: Boolean):integer;
 
-procedure QuickSort(var AData;AFirstItem,ALastItem,AItemSize:Integer;ACompareFunction:TCompareFunction;AUserParameter:Pointer=nil);
+procedure QuickSort(var AData;AFirstItem,ALastItem:Int64;AItemSize:Integer;ACompareFunction:TCompareFunction;AUserParameter:Pointer=nil);
+function DichotomyFind(var AData,AKey;AFirstItem,ALastItem:Int64;AItemSize:Integer;ACompareFunction:TCompareFunction;AUserParameter:Pointer=nil): Integer;
+
+function GetActiveProcessorCount(GroupNumber: Word): DWORD; stdcall; external 'kernel32.dll';
+
+function EuclideanToPSNR(AEuclidean: Double): Double;
+function PSNRToEuclidean(APSNR: Double): Double;
+
+const
+  ALL_PROCESSOR_GROUPS = High(Word);
+
+  cBestPSNR = 20.0 * Ln(High(Word)) / Ln(10.0);
 
 implementation
 
-procedure QuickSort(var AData;AFirstItem,ALastItem,AItemSize:Integer;ACompareFunction:TCompareFunction;AUserParameter:Pointer=nil);
-var I, J, P: Integer;
+var
+  GTempAutoInc : Integer = 0;
+  GInvariantFormatSettings: TFormatSettings;
+  GNumberOfProcessors: Integer = 0;
+
+// SpinLock code from https://wiki.osdev.org/Spinlock
+
+procedure SpinEnter(Lock: PSpinLock); register; assembler;
+label acquireLock, spin_with_pause, acquired;
+asm
+  acquireLock:
+      lock bts [lock],0        // Attempt to acquire the lock (in case lock is uncontended)
+      jnc acquired
+
+  spin_with_pause:
+      pause                    // Tell CPU we're spinning
+      test dword [lock],1      // Is the lock free?
+      jnz spin_with_pause      // no, wait
+      jmp acquireLock          // retry
+
+  acquired:
+end;
+
+procedure SpinSleep;
+begin
+  Sleep(1);
+end;
+
+procedure SpinEnterSleep(Lock: PSpinLock); register; assembler;
+label acquireLock, spin_with_pause, sleep, acquired;
+asm
+  push  rax
+
+  acquireLock:
+      lock  bts [lock],0       // Attempt to acquire the lock (in case lock is uncontended)
+      jnc   acquired
+
+      xor   eax,eax
+
+  spin_with_pause:
+      inc   eax
+      test  eax,$fffe0000
+      jnz   sleep
+      pause                    // Tell CPU we're spinning
+      test  dword [lock],1     // Is the lock free?
+      jnz   spin_with_pause    // no, wait
+      jmp   acquireLock        // retry
+
+  sleep:
+      push  rcx
+      call  SpinSleep
+      pop   rcx
+      jmp   acquireLock
+
+  acquired:
+
+  pop  rax
+end;
+
+procedure SpinLeave(Lock: PSpinLock); register; assembler;
+asm
+  mov dword [Lock],0
+end;
+
+procedure Exchange(var a, b: Integer);
+var
+  tmp: Integer;
+begin
+  tmp := b;
+  b := a;
+  a := tmp;
+end;
+
+procedure Exchange(var a, b: Cardinal);
+var
+  tmp: Cardinal;
+begin
+  tmp := b;
+  b := a;
+  a := tmp;
+end;
+
+procedure Exchange(var a, b: Double);
+var
+  tmp: Double;
+begin
+  tmp := b;
+  b := a;
+  a := tmp;
+end;
+
+procedure Exchange(var a, b: Single);
+var
+  tmp: Double;
+begin
+  tmp := b;
+  b := a;
+  a := tmp;
+end;
+
+function iDivDef(x, y, def: Integer): Integer;
+begin
+  Result := def;
+  if y <> 0 then
+    Result := x div y;
+end;
+
+function iDivDef(x, y, def: Int64): Int64;
+begin
+  Result := def;
+  if y <> 0 then
+    Result := x div y;
+end;
+
+function DivDef(x, y, def: Double): Double;
+begin
+  Result := def;
+  if y <> 0 then
+    Result := x / y;
+end;
+
+function NanDef(x, def: Double): Double; inline;
+begin
+  Result := x;
+  if IsNan(Result) then
+    Result := def;
+end;
+
+function lerp(x, y, alpha: Double): Double;
+begin
+  Result := x + (y - x) * alpha;
+end;
+
+function NumberOfProcessors: Integer;
+begin
+  Result := GNumberOfProcessors;
+end;
+
+function HalfNumberOfProcessors: Integer;
+begin
+  Result := max(1, GNumberOfProcessors div 2);
+end;
+
+function QuarterNumberOfProcessors: Integer;
+begin
+  Result := max(1, GNumberOfProcessors div 4);
+end;
+
+procedure QuickSort(var AData;AFirstItem,ALastItem:Int64;AItemSize:Integer;ACompareFunction:TCompareFunction;AUserParameter:Pointer=nil);
+var I, J, P: Int64;
     PData,P1,P2: PByte;
     Tmp: array[0..4095] of Byte;
 begin
@@ -186,9 +355,35 @@ begin
   until I >= ALastItem;
 end;
 
+function DichotomyFind(var AData,AKey;AFirstItem,ALastItem:Int64;AItemSize:Integer;ACompareFunction:TCompareFunction;AUserParameter:Pointer=nil): Integer;
+{ Searches for the first item <= Key, returns True if exact match,
+  sets index to the index of the found string. }
 var
-  GTempAutoInc : Integer = 0;
-  GInvariantFormatSettings: TFormatSettings;
+  I,L,R,Dir: Integer;
+  PData,PKey,P: PByte;
+begin
+  // Use binary search.
+  L := AFirstItem;
+  R := ALastItem;
+  PData:=PByte(@AData);
+  PKey:=PByte(@AKey);
+  while L<=R do
+  begin
+    I := L + (R - L) div 2;
+    P := PData; Inc(P, I * AItemSize);
+    Dir := ACompareFunction(P, PKey, AUserParameter);
+    if Dir < 0 then
+      L := I+1
+    else begin
+      R := I-1;
+      if Dir = 0 then
+        L := I;
+    end;
+  end;
+  Result := L;
+  if not InRange(Result, AFirstItem, ALastItem) then
+    Result := -1;
+end;
 
 const
   READ_BYTES = 65536; // not too small to avoid fragmentation when reading large files.
@@ -347,8 +542,8 @@ begin
   DeleteFile(PChar(DstFN));
 end;
 
-procedure DoExternalSKLearn(Dataset: TFloatDynArray2; ClusterCount, Precision: Integer; Compiled, PrintProgress: Boolean;
-  var Clusters: TIntegerDynArray; var Centroids: TFloatDynArray2);
+procedure DoExternalSKLearn(Dataset: TDoubleDynArray2; ClusterCount, Precision: Integer; Compiled, PrintProgress: Boolean;
+  var Clusters: TIntegerDynArray; var Centroids: TDoubleDynArray2);
 var
   i, j, st: Integer;
   InFN, Line, Output, ErrOut: String;
@@ -518,7 +713,7 @@ begin
   end;
 end;
 
-procedure GenerateSVMLightData(Dataset: TFloatDynArray2; Output: TStringList; Header: Boolean);
+procedure GenerateSVMLightData(Dataset: TDoubleDynArray2; Output: TStringList; Header: Boolean);
 var
   i, j, cnt: Integer;
   Line: String;
@@ -566,7 +761,7 @@ begin
   end;
 end;
 
-function GenerateSVMLightFile(Dataset: TFloatDynArray2; Header: Boolean): String;
+function GenerateSVMLightFile(Dataset: TDoubleDynArray2; Header: Boolean): String;
 var
   SL: TStringList;
 begin
@@ -587,7 +782,7 @@ begin
   Result := StrToInt(copy(line, 1, Pos(' ', line) - 1));
 end;
 
-function GetSVMLightLine(index: Integer; lines: TStringList): TFloatDynArray;
+function GetSVMLightLine(index: Integer; lines: TStringList): TDoubleDynArray;
 var
   i, p, np, clusterCount, restartCount: Integer;
   line, val, sc: String;
@@ -640,7 +835,42 @@ begin
   Result := GInvariantFormatSettings;
 end;
 
+function EuclideanToPSNR(AEuclidean: Double): Double;
+begin
+  Result := cBestPSNR - 10.0 * Log10(Max(1.0, AEuclidean));
+end;
+
+function PSNRToEuclidean(APSNR: Double): Double;
+begin
+  Result := Power(10.0, (cBestPSNR - APSNR) * 0.1);
+end;
+
+{ TKRng }
+
+procedure TKRng.init();
+begin
+  x := 123456789;
+  y := 362436069;
+  z := 521288629;
+  w := 88675123;
+end;
+
+function TKRng.randInt(): UInt64;
+var
+  t: UInt64;
+begin
+  t := (x xor (x shl 11)); x := y; y := z; z := w;
+  w := (w xor (w shr 19)) xor (t xor (t shr 8));
+  Result := w;
+end;
+
+function TKRng.random: Double;
+begin
+  Result := randInt() / High(UInt64);
+end;
+
 initialization
   GetLocaleFormatSettings(LOCALE_INVARIANT, GInvariantFormatSettings);
+  GNumberOfProcessors := GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
 end.
 
