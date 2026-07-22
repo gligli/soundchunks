@@ -109,6 +109,7 @@ type
     procedure FindGain;
     procedure MakeChunks;
     procedure Reduce;
+    procedure KNNFit;
     procedure SaveStream(AStream: TStream);
 
     property AttenuationLaw: Double read GetAttenuationLaw;
@@ -757,6 +758,65 @@ begin
   end;
 end;
 
+procedure TFrame.KNNFit;
+var
+  i, j, dsIdx: Integer;
+  idx: Integer;
+  err: TANNFloat;
+  Dataset: TANNFloatDynArray2;
+  query: TANNFloatDynArray;
+  KDT: PANNkdtree;
+  chunk: TChunk;
+begin
+  SetLength(Dataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed} * (CMaxAttenuation + 1), encoder.chunkSize);
+  SetLength(query, encoder.chunkSize);
+
+  dsIdx := 0;
+  for i := 0 to reducedChunks.Count * (CMaxAttenuation + 1) - 1 do
+  begin
+    chunk := reducedChunks[i div (CMaxAttenuation + 1)];
+
+    for j := 0 to encoder.ChunkSize - 1 do
+    begin
+      Dataset[dsIdx + 0, j] := TEncoder.makeFloatSample(chunk.dstData[j], encoder.ChunkBitDepth, i and CMaxAttenuation, False, AttenuationLaw);
+      Dataset[dsIdx + 1, j] := TEncoder.makeFloatSample(chunk.dstData[j], encoder.ChunkBitDepth, i and CMaxAttenuation, True, AttenuationLaw);
+      Dataset[dsIdx + 2, j] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - j], encoder.ChunkBitDepth, i and CMaxAttenuation, False, AttenuationLaw);
+      Dataset[dsIdx + 3, j] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - j], encoder.ChunkBitDepth, i and CMaxAttenuation, True, AttenuationLaw);
+    end;
+
+    Inc(dsIdx, 4);
+  end;
+
+  KDT := ann_kdtree_create(PPANNFloat(@Dataset[0]), Length(Dataset), encoder.ChunkSize, 1, ANN_KD_STD);
+  try
+    for i := 0 to chunkRefs.Count - 1 do
+    begin
+      for j := 0 to encoder.ChunkSize - 1 do
+        query[j] := chunkRefs[i].srcData[j];
+
+      idx := ann_kdtree_search(KDT, @query[0], 0.0, @err);
+
+      chunkRefs[i].dstNegative := idx and 1 <> 0;
+      chunkRefs[i].dstReversed := idx and 2 <> 0;
+      chunkRefs[i].dstAttenuation := (idx shr 2) and CMaxAttenuation;
+      chunkRefs[i].reducedChunk := reducedChunks[(idx shr 2) div (CMaxAttenuation + 1)];
+
+      Inc(chunkRefs[i].reducedChunk.useCount);
+    end;
+  finally
+    ann_kdtree_destroy(KDT);
+  end;
+
+  for i := reducedChunks.Count - 1 downto 0 do
+    if reducedChunks[i].useCount = 0 then
+       reducedChunks.Delete(i);
+
+  reducedChunks.Sort(@CompareChunkUseCountInv);
+
+  for i := 0 to reducedChunks.Count - 1 do
+    reducedChunks[i].index := i;
+end;
+
 procedure TFrame.SaveStream(AStream: TStream);
 var
   i, j, k, s1, s2, vcbsCnt, prevVcbsCnt, codeSize, bitCnt: Integer;
@@ -1079,7 +1139,7 @@ end;
 
 procedure TEncoder.PrepareFrames;
 const
-  CVariableCodingRatio = 0.86;
+  CVariableCodingRatio = 0.85;
 var
   j, i, k, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
@@ -1224,6 +1284,7 @@ procedure TEncoder.MakeFrames;
     frm.FindGain;
     frm.MakeChunks;
     frm.Reduce;
+    frm.KNNFit;
     for i := 0 to CBandCount - 1 do
       frm.bands[i].MakeDstData;
     Write('.');
