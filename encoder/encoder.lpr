@@ -121,7 +121,7 @@ type
   TEncoder = class
   type
     TOutputSample = record
-      AsInt: Integer;
+      AsInteger: Integer;
       AsDouble: Double;
     end;
   public
@@ -307,11 +307,11 @@ begin
   reducedChunk := Self;
   channel := -1;
 
-  SetLength(srcData, frame.encoder.chunkSize);
+  SetLength(srcData, frame.encoder.ChunkSize);
 
   if Assigned(srcDta) then
   begin
-    origSrcData := @srcDta[idx * (frame.encoder.chunkSize - frame.encoder.ChunkBlend) * underSample];
+    origSrcData := @srcDta[idx * (frame.encoder.ChunkSize - frame.encoder.ChunkBlend) * underSample];
     MakeSrcData(origSrcData);
   end;
 end;
@@ -328,7 +328,7 @@ var
 begin
   SetLength(data, Length(srcData));
   for i := 0 to High(data) do
-    data[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(data) - i, i)], frame.encoder.ChunkBitDepth, 1, dstNegative, frame.AttenuationLaw).AsDouble;
+    data[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(data) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative, frame.AttenuationLaw).AsDouble;
   dct := TEncoder.ComputeDCT(Length(data), data);
 end;
 
@@ -405,7 +405,7 @@ var
 begin
   SetLength(dstData, length(srcData));
   for i := 0 to High(dstData) do
-    dstData[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(dstData) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative, frame.AttenuationLaw).AsInt;
+    dstData[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(dstData) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative, frame.AttenuationLaw).AsInteger;
 end;
 
 { TBand }
@@ -475,9 +475,9 @@ begin
   begin
     chunk := finalChunks[i];
 
-    for j := 0 to frame.encoder.chunkSize - 1 do
+    for j := 0 to frame.encoder.ChunkSize - 1 do
     begin
-      smp := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, frame.encoder.chunkSize - 1 - j, j)], frame.encoder.ChunkBitDepth, chunk.reducedChunk.dstAttenuation, chunk.dstNegative, frame.AttenuationLaw);
+      smp := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, frame.encoder.ChunkSize - 1 - j, j)], frame.encoder.ChunkBitDepth, chunk.dstAttenuation, chunk.dstNegative, frame.AttenuationLaw);
 
       for k := 0 to globalData^.underSample - 1 do
       begin
@@ -561,7 +561,7 @@ begin
 
         for l := 0 to encoder.ChunkSize - 1 do
         begin
-          os := TEncoder.makeOutputSample(tmp[l], encoder.ChunkBitDepth, atten, False, law).AsInt;
+          os := TEncoder.makeOutputSample(tmp[l], encoder.ChunkBitDepth, atten, False, law).AsInteger;
           fs := TEncoder.makeFloatSample(os, encoder.ChunkBitDepth, atten, False, law);
           v += sqr(tmp[l] - fs);
         end;
@@ -582,15 +582,14 @@ end;
 
 procedure TFrame.MakeChunks;
 var
-  i, j, k: Integer;
+  i, j: Integer;
 begin
   chunkRefs.Clear;
   for i := Ord(not encoder.ReduceBassBand) to CBandCount - 1 do
   begin
     bands[i].MakeChunks;
     for j := 0 to bands[i].finalChunks.Count - 1 do
-      //for k := 1 to round(Power(bands[i].globalData^.underSample, sqrt(2.0))) do
-        chunkRefs.Add(bands[i].finalChunks[j]);
+      chunkRefs.Add(bands[i].finalChunks[j]);
   end;
 end;
 
@@ -761,7 +760,7 @@ end;
 procedure TFrame.SaveStream(AStream: TStream);
 var
   i, j, k, s1, s2, vcbsCnt, prevVcbsCnt, codeSize, bitCnt: Integer;
-  code, w, bits: Cardinal;
+  code, w, bits: UInt64;
   cl: TChunkList;
 begin
   Assert(reducedChunks.Count <= CMaxChunksPerFrame);
@@ -778,19 +777,6 @@ begin
   AStream.WriteWord(w and $ffff);
 
   cl := reducedChunks;
-  if cl.Count = 0 then
-    cl := chunkRefs;
-
-  for j := 0 to cl.Count div 2 - 1 do
-  begin
-    s1 := cl[j * 2 + 0].dstAttenuation;
-    s2 := cl[j * 2 + 1].dstAttenuation;
-    AStream.WriteByte((s1 shl 4) or s2);
-  end;
-
-  if Odd(cl.Count) then
-    AStream.WriteByte(cl[cl.Count - 1].dstAttenuation shl 4);
-
 
   case encoder.ChunkBitDepth of
     8:
@@ -843,6 +829,9 @@ begin
       code := 0;
       codeSize := 0;
 
+      code := code or (cl[j].dstAttenuation shl codeSize);
+      codeSize += 4;
+
       code := code or (Ord(cl[j].dstNegative) shl codeSize);
       codeSize += 1;
 
@@ -870,7 +859,7 @@ begin
 
       bits := bits or (code shl bitCnt);
       bitCnt += codeSize;
-      if bitCnt >= 16 then
+      while bitCnt >= 16 do
       begin
         bitCnt -= 16;
         AStream.WriteWord(bits and $ffff);
@@ -1090,7 +1079,7 @@ end;
 
 procedure TEncoder.PrepareFrames;
 const
-  CVariableCodingRatio = 0.8;
+  CVariableCodingRatio = 0.86;
 var
   j, i, k, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
@@ -1134,9 +1123,9 @@ begin
 
     bandCost := 0;
     for i := 0 to CBandCount - 1 do
-      bandCost += (SampleCount * ChannelCount * (Log2(ChunksPerFrame) + (1 + CVariableCodingHeaderSize) + 1 {dstNegative} + 1 {dstReversed})) / (8 {bytes -> bits} * (ChunkSize - ChunkBlend) * bandData[i].underSample);
+      bandCost += (SampleCount * ChannelCount * (Log2(ChunksPerFrame) + (1 + CVariableCodingHeaderSize) + 4 {dstAttenuation} + 1 {dstNegative} + 1 {dstReversed})) / (8 {bytes -> bits} * (ChunkSize - ChunkBlend) * bandData[i].underSample);
 
-    frameCost := (ChunksPerFrame * ChunkSize) * ChunkBitDepth / 8 + ChunksPerFrame * 4 / 8 + (4 * SizeOf(Word) + SizeOf(Cardinal) + CBandCount * SizeOf(Cardinal)) {frame header};
+    frameCost := (ChunksPerFrame * ChunkSize) * ChunkBitDepth / 8 + (4 * SizeOf(Word) + SizeOf(Cardinal) + CBandCount * SizeOf(Cardinal)) {frame header};
 
     tentativeByteSize := Round(fixedCost + bandCost * CVariableCodingRatio + FrameCount * frameCost);
 
@@ -1453,7 +1442,7 @@ begin
   obd := (1 shl (OutBitDepth - 1)) - 1;
   smp16 := smp * obd * coeff;
   if Negative then smp16 := -smp16;
-  Result.AsInt := EnsureRange(round(smp16), -obd, obd);
+  Result.AsInteger := EnsureRange(round(smp16), -obd, obd);
   Result.AsDouble := EnsureRange(smp16, -obd, obd);
 end;
 
@@ -1721,8 +1710,8 @@ begin
     sf := smp / (1 shl (obd - 1)) / (1 * (1 + bs)) * IfThen(sgn, -1, 1);
 
     f := TEncoder.makeFloatSample(smp, obd, bs, sgn, 1 / 6);
-    o := TEncoder.makeOutputSample(f, obd, bs, sgn, 1 / 6).AsInt;
-    so := TEncoder.makeOutputSample(sf, obd, bs, sgn, 1 / 6).AsInt;
+    o := TEncoder.makeOutputSample(f, obd, bs, sgn, 1 / 6).AsInteger;
+    so := TEncoder.makeOutputSample(sf, obd, bs, sgn, 1 / 6).AsInteger;
     writeln(smp,#9,o,#9,so,#9,bs,#9,sgn,#9,FloatToStr(f));
     assert(smp = o);
     assert(smp = so);
