@@ -331,7 +331,7 @@ var
 begin
   SetLength(data, Length(srcData));
   for i := 0 to High(data) do
-    data[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(data) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative, frame.AttenuationLaw).AsDouble;
+    data[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(data) - i, i)], frame.encoder.ChunkBitDepth, 1, dstNegative, frame.AttenuationLaw).AsDouble;
   dct := TEncoder.ComputeDCT(Length(data), data);
 end;
 
@@ -495,7 +495,7 @@ begin
 
     for iSample := 0 to frame.encoder.ChunkSize - 1 do
     begin
-      delta := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, frame.encoder.ChunkSize - 1 - iSample, iSample)], frame.encoder.ChunkBitDepth, chunk.dstAttenuation, chunk.dstNegative, frame.AttenuationLaw);
+      delta := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, frame.encoder.ChunkSize - 1 - iSample, iSample)], frame.encoder.ChunkBitDepth, chunk.reducedChunk.dstAttenuation, chunk.dstNegative, frame.AttenuationLaw);
       smp[chunk.channel] += delta;
 
       for iUnderSample := 0 to globalData^.underSample - 1 do
@@ -787,23 +787,23 @@ var
   KDT: PANNkdtree;
   chunk: TChunk;
 begin
-  SetLength(Dataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed} * (CMaxAttenuation + 1), encoder.chunkSize);
+  SetLength(Dataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, encoder.chunkSize);
   SetLength(query, encoder.chunkSize);
 
   SetLength(smpTruth, encoder.ChannelCount);
   SetLength(smpLossy, encoder.ChannelCount);
 
   dsIdx := 0;
-  for iChunk := 0 to reducedChunks.Count * (CMaxAttenuation + 1) - 1 do
+  for iChunk := 0 to reducedChunks.Count - 1 do
   begin
-    chunk := reducedChunks[iChunk div (CMaxAttenuation + 1)];
+    chunk := reducedChunks[iChunk];
 
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
-      Dataset[dsIdx + 0, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, iChunk and CMaxAttenuation, False, AttenuationLaw);
-      Dataset[dsIdx + 1, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, iChunk and CMaxAttenuation, True, AttenuationLaw);
-      Dataset[dsIdx + 2, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, iChunk and CMaxAttenuation, False, AttenuationLaw);
-      Dataset[dsIdx + 3, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, iChunk and CMaxAttenuation, True, AttenuationLaw);
+      Dataset[dsIdx + 0, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, False, AttenuationLaw);
+      Dataset[dsIdx + 1, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, True, AttenuationLaw);
+      Dataset[dsIdx + 2, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, False, AttenuationLaw);
+      Dataset[dsIdx + 3, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, True, AttenuationLaw);
     end;
 
     Inc(dsIdx, 4);
@@ -823,8 +823,7 @@ begin
 
       chunk.dstNegative := dsIdx and 1 <> 0;
       chunk.dstReversed := dsIdx and 2 <> 0;
-      chunk.dstAttenuation := (dsIdx shr 2) and CMaxAttenuation;
-      chunk.reducedChunk := reducedChunks[(dsIdx shr 2) div (CMaxAttenuation + 1)];
+      chunk.reducedChunk := reducedChunks[dsIdx shr 2];
 
       Inc(chunk.reducedChunk.useCount);
 
@@ -868,6 +867,17 @@ begin
   AStream.WriteWord(w and $ffff);
 
   cl := reducedChunks;
+
+  for iChunk := 0 to cl.Count div 2 - 1 do
+  begin
+    s1 := cl[iChunk * 2 + 0].dstAttenuation;
+    s2 := cl[iChunk * 2 + 1].dstAttenuation;
+    AStream.WriteByte((s1 shl 4) or s2);
+  end;
+
+  if Odd(cl.Count) then
+    AStream.WriteByte(cl[cl.Count - 1].dstAttenuation shl 4);
+
 
   case encoder.ChunkBitDepth of
     8:
@@ -925,9 +935,6 @@ begin
 
       code := 0;
       codeSize := 0;
-
-      code := code or (cl[iChunk].dstAttenuation shl codeSize);
-      codeSize += 4;
 
       code := code or (Ord(cl[iChunk].dstNegative) shl codeSize);
       codeSize += 1;
@@ -1160,7 +1167,7 @@ end;
 
 procedure TEncoder.PrepareFrames;
 const
-  CVariableCodingRatio = 0.85;
+  CVariableCodingRatio = 0.71;
 var
   j, i, k, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
@@ -1204,9 +1211,9 @@ begin
 
     bandCost := 0;
     for i := 0 to CBandCount - 1 do
-      bandCost += (SampleCount * ChannelCount * (Log2(ChunksPerFrame) + (1 + CVariableCodingHeaderSize) + 4 {dstAttenuation} + 1 {dstNegative} + 1 {dstReversed})) / (8 {bytes -> bits} * (ChunkSize - ChunkBlend) * bandData[i].underSample);
+      bandCost += (SampleCount * ChannelCount * (Log2(ChunksPerFrame) + (1 + CVariableCodingHeaderSize) + 1 {dstNegative} + 1 {dstReversed})) / (8 {bytes -> bits} * (ChunkSize - ChunkBlend) * bandData[i].underSample);
 
-    frameCost := (ChunksPerFrame * ChunkSize) * ChunkBitDepth / 8 + (4 * SizeOf(Word) + SizeOf(Cardinal) + CBandCount * SizeOf(Cardinal)) {frame header};
+    frameCost := (ChunksPerFrame * ChunkSize) * ChunkBitDepth / 8 + ChunksPerFrame * 4 / 8 + (4 * SizeOf(Word) + SizeOf(Cardinal) + CBandCount * SizeOf(Cardinal)) {frame header};
 
     tentativeByteSize := Round(fixedCost + bandCost * CVariableCodingRatio + FrameCount * frameCost);
 
