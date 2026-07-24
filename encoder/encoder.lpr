@@ -168,12 +168,9 @@ type
     class function ComputeDCT(chunkSz: Integer; const samples: TDoubleDynArray): TDoubleDynArray;
     class function ComputeInvDCT(chunkSz: Integer; const dct: TDoubleDynArray): TDoubleDynArray;
     class function ComputeDCT4(chunkSz: Integer; const samples: TDoubleDynArray): TDoubleDynArray;
-    class function ComputeModifiedDCT(samplesSize: Integer; const samples: TDoubleDynArray): TDoubleDynArray;
-    class function ComputeInvModifiedDCT(dctSize: Integer; const dct: TDoubleDynArray): TDoubleDynArray;
     class function CompareEuclidean(const dctA, dctB: TANNFloatDynArray): TANNFloat; overload;
     class function CompareEuclidean(const dctA, dctB: TDoubleDynArray): Double; overload;
     class function CompareEuclidean(const dctA, dctB: TSmallIntDynArray): Double; overload;
-    class function CheckJoinPenalty(x, y, z, a, b, c: Double; TestRange: Boolean): Boolean; inline;
     class function ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): Double;
     class procedure createWAV(channels: word; resolution: word; rate: longint; fn: string; const data: TSmallIntDynArray);
 
@@ -229,72 +226,6 @@ begin
   if idx < 0 then
     Exit(def);
   Result := StrToFloatDef(copy(ParamStr(idx), Length(p) + 1), def);
-end;
-
-procedure DFT(frequencies, wave: PDouble; N: Integer);
-var
-  real, imag: Double;
-  k, i: Integer;
-begin
-  real := 0;
-  imag := 0;
-
-  for k := 0 to N - 1 do
-  begin
-    for i := 0 to N - 1 do
-    begin
-      real += wave[i] * cos(-2 * PI * k * i / N);
-      imag += wave[i] * sin(-2 * PI * k * i / N);
-    end;
-
-    frequencies[k] := real * real + imag * imag;
-    real := 0;
-    imag := 0;
-  end;
-end;
-
-procedure iDFT(frequencies, wave: PDouble; N: Integer);
-var
-  real, imag: Double;
-  k, i: Integer;
-begin
-  real := 0;
-  imag := 0;
-
-  for k := 0 to N - 1 do
-  begin
-    for i := 0 to N - 1 do
-    begin
-      real += wave[i] * cos(2 * PI * k * i / N);
-      imag += wave[i] * sin(2 * PI * k * i / N);
-
-    end;
-    real /= N;
-    imag /= N;
-    frequencies[k] := sqrt(real * real + imag * imag);
-    real := 0;
-    imag := 0;
-  end;
-end;
-
-// from https://github.com/ke2li/Arduino-Music-Tuner/blob/master/cepstrum/cepstrum.ino
-procedure cepstrum(wave: PDouble; N: Integer);
-var
-  temp: TDoubleDynArray;
-  i: Integer;
-begin
-  SetLength(temp, N);
-
-  //step 1 of cepstrum
-  DFT(@temp[0], wave, N);
-
-  //step 2 of cepstrum
-  for i := 0 to N - 1 do
-    if not IsZero(temp[i]) then
-      temp[i] := Log10(temp[i]);
-
-  //step 3 of cepstrum
-  iDFT(wave, @temp[0], N);
 end;
 
 { TChunk }
@@ -363,7 +294,7 @@ begin
     p1 += Abs(srcData[i]);
 
   p2 := 0.0;
-  for i := Length(srcData) div 2 to High(srcData) do
+  for i := Length(srcData) - Length(srcData) div 2 to High(srcData) do
     p2 += Abs(srcData[i]);
 
   dstReversed := p1 > p2;
@@ -778,20 +709,26 @@ end;
 
 procedure TFrame.KNNFit;
 var
-  iChunk, iSample, dsIdx: Integer;
+  iChunk, iSample, iSampleCribble, iChannel, dsIdx, bestIdx: Integer;
   err: TANNFloat;
-  delta: Double;
-  smpTruth, smpLossy: TDoubleDynArray;
-  Dataset: TANNFloatDynArray2;
+  curTruthAcc, curLossyAcc, bestErr, delta: Double;
+  truthAcc, lossyAcc: TDoubleDynArray;
+  DCTDataset, PlainDataset: TANNFloatDynArray2;
   query: TANNFloatDynArray;
   KDT: PANNkdtree;
   chunk: TChunk;
 begin
-  SetLength(Dataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, encoder.chunkSize);
+  SetLength(PlainDataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, encoder.chunkSize);
+  SetLength(DCTDataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed});
   SetLength(query, encoder.chunkSize);
 
-  SetLength(smpTruth, encoder.ChannelCount);
-  SetLength(smpLossy, encoder.ChannelCount);
+  SetLength(truthAcc, encoder.ChannelCount);
+  SetLength(lossyAcc, encoder.ChannelCount);
+  for iChannel := 0 to encoder.ChannelCount - 1 do
+  begin
+    truthAcc[iChannel] := bands[0].srcFirstSample[iChannel];
+    lossyAcc[iChannel] := truthAcc[iChannel];
+  end;
 
   dsIdx := 0;
   for iChunk := 0 to reducedChunks.Count - 1 do
@@ -800,38 +737,62 @@ begin
 
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
-      Dataset[dsIdx + 0, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, False, AttenuationLaw);
-      Dataset[dsIdx + 1, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, True, AttenuationLaw);
-      Dataset[dsIdx + 2, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, False, AttenuationLaw);
-      Dataset[dsIdx + 3, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, True, AttenuationLaw);
+      PlainDataset[dsIdx + 0, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, False, AttenuationLaw);
+      PlainDataset[dsIdx + 1, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, True, AttenuationLaw);
+      PlainDataset[dsIdx + 2, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, False, AttenuationLaw);
+      PlainDataset[dsIdx + 3, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, True, AttenuationLaw);
     end;
 
+    DCTDataset[dsIdx + 0] := TEncoder.ComputeDCT4(encoder.ChunkSize, PlainDataset[dsIdx + 0]);
+    DCTDataset[dsIdx + 1] := TEncoder.ComputeDCT4(encoder.ChunkSize, PlainDataset[dsIdx + 1]);
+    DCTDataset[dsIdx + 2] := TEncoder.ComputeDCT4(encoder.ChunkSize, PlainDataset[dsIdx + 2]);
+    DCTDataset[dsIdx + 3] := TEncoder.ComputeDCT4(encoder.ChunkSize, PlainDataset[dsIdx + 3]);
     Inc(dsIdx, 4);
   end;
 
-  KDT := ann_kdtree_create(PPANNFloat(@Dataset[0]), Length(Dataset), encoder.ChunkSize, 1, ANN_KD_STD);
+  KDT := ann_kdtree_create(PPANNFloat(@DCTDataset[0]), Length(DCTDataset), encoder.ChunkSize, 1, ANN_KD_STD);
   try
     for iChunk := 0 to chunkRefs.Count - 1 do
     begin
       chunk := chunkRefs[iChunk];
 
-      delta := (smpLossy[chunk.channel] - smpTruth[chunk.channel]) / encoder.ChunkSize;
-      for iSample := 0 to encoder.ChunkSize - 1 do
-        query[iSample] := chunk.srcData[iSample] - delta;
+      curTruthAcc := truthAcc[chunk.channel];
+      curLossyAcc := lossyAcc[chunk.channel];
 
-      dsIdx := ann_kdtree_search(KDT, @query[0], 0.0, @err);
+      bestIdx := -1;
+      bestErr := Infinity;
+      for iSampleCribble := 0 to encoder.ChunkSize - 1 do
+      begin
+        for iSample := 0 to encoder.ChunkSize - 1 do
+          query[iSample] := chunk.srcData[iSample];
 
-      chunk.dstNegative := dsIdx and 1 <> 0;
-      chunk.dstReversed := dsIdx and 2 <> 0;
-      chunk.reducedChunk := reducedChunks[dsIdx shr 2];
+        query[iSampleCribble] -= curLossyAcc - curTruthAcc;
 
-      Inc(chunk.reducedChunk.useCount);
+        query := TEncoder.ComputeDCT4(encoder.ChunkSize, query);
+
+        dsIdx := ann_kdtree_search(KDT, @query[0], 0.0, @err);
+
+        if err < bestErr then
+        begin
+          bestIdx := dsIdx;
+          bestErr := err;
+        end;
+      end;
+
+      chunk.dstNegative := bestIdx and 1 <> 0;
+      chunk.dstReversed := bestIdx and 2 <> 0;
+      chunk.reducedChunk := reducedChunks[bestIdx shr 2];
 
       for iSample := 0 to encoder.ChunkSize - 1 do
       begin
-        smpTruth[chunk.channel] += chunk.srcData[iSample];
-        smpLossy[chunk.channel] += Dataset[dsIdx, iSample];
+        curTruthAcc += chunk.srcData[iSample];
+        curLossyAcc += PlainDataset[bestIdx, iSample];
       end;
+
+      Inc(chunk.reducedChunk.useCount);
+
+      truthAcc[chunk.channel] := curTruthAcc;
+      lossyAcc[chunk.channel] := curLossyAcc;
     end;
   finally
     ann_kdtree_destroy(KDT);
@@ -1366,7 +1327,7 @@ begin
   LowCut := 0.0;
   HighCut := 24000.0;
   ChunkBitDepth := 8;
-  ChunkSize := 4;
+  ChunkSize := 8;
   ReduceBassBand := True;
   TrebleBoost := False;
   VariableFrameSizeRatio := 1.0;
@@ -1620,46 +1581,6 @@ begin
   end;
 end;
 
-// MDCT cannot be used (would need overlapped add in decoder)
-class function TEncoder.ComputeModifiedDCT(samplesSize: Integer; const samples: TDoubleDynArray): TDoubleDynArray;
-var
-  k, n: Integer;
-  sum: Double;
-begin
-  SetLength(Result, length(samples) div 2);
-  for k := 0 to samplesSize div 2 - 1 do
-  begin
-    sum := 0;
-    for n := 0 to samplesSize - 1 do
-      sum += samples[n] * cos(pi / (samplesSize div 2) * (n + 0.5 + (samplesSize div 2) * 0.5) * (k + 0.5));
-
-    Result[k] := sum;
-  end;
-end;
-
-// IMDCT cannot be used (would need overlapped add in decoder)
-class function TEncoder.ComputeInvModifiedDCT(dctSize: Integer; const dct: TDoubleDynArray): TDoubleDynArray;
-var
-  k, n, i: Integer;
-  sum: Double;
-begin
-  SetLength(Result, length(dct));
-  for n := 0 to dctSize - 1 do
-  begin
-    sum := 0;
-    for k := 0 to dctSize div 2 - 1 do
-      sum += dct[k] * cos (pi / (dctSize div 2) * (n + 0.5 + (dctSize div 2) * 0.5) * (k + 0.5));
-
-    Result[n] := sum / (dctSize div 2);
-  end;
-
-  for i := 0 to dctSize div 2 - 1 do
-  begin
-    Result[i] += Result[i + dctSize div 2];
-    Result[i + dctSize div 2] := 0.0;
-  end;
-end;
-
 class function TEncoder.CompareEuclidean(const dctA, dctB: TANNFloatDynArray): TANNFloat;
 var
   i: Integer;
@@ -1697,18 +1618,6 @@ begin
     Result += sqr((dctA[i] - dctB[i]) / High(SmallInt));
 
   Result := sqrt(Result / Length(dctA));
-end;
-
-class function TEncoder.CheckJoinPenalty(x, y, z, a, b, c: Double; TestRange: Boolean): Boolean;
-var
-  dStart, dEnd: Double;
-begin
-  dStart := -1.5 * x + 2.0 * y - 0.5 * z;
-  dEnd := -1.5 * a + 2.0 * b - 0.5 * c;
-
-  Result := Sign(dStart) * Sign(dEnd) <> -1;
-  if TestRange and Result then
-    Result := InRange(y, a, c) or InRange(y, c, a);
 end;
 
 function TEncoder.ComputeEAQUAL(chunkSz: Integer; UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
@@ -1892,24 +1801,20 @@ begin
       enc.MakeFrames;
       enc.MakeDstData;
 
-      br := 0;
-      if enc.Precision > 0 then
-        br := enc.SaveGSC;
-
-      psy := enc.ComputePsyADelta(enc.srcData, enc.dstData);
-      WriteLn('PsyADelta = ', FormatFloat(',0.0000000000', psy));
-
       if enc.DebugMode then
       begin
         enc.SaveWAV;
         if CBandCount > 1 then
           for i := 0 to CBandCount - 1 do
             enc.SaveBandWAV(i, ChangeFileExt(enc.outputFN, '-' + IntToStr(i) + '.wav'));
-
-        s := IntToStr(round(br)) + ' ' + FormatFloat(',0.00000', psy) + ' ';
-        for i := 0 to ParamCount do s := s + ParamStr(i) + ' ';
-        ShellExecute(0, 'open', 'cmd.exe', PChar('/c echo ' + s + ' >> ..\log.txt'), '', 0);
       end;
+
+      br := 0;
+      if enc.Precision > 0 then
+        br := enc.SaveGSC;
+
+      psy := enc.ComputePsyADelta(enc.srcData, enc.dstData);
+      WriteLn('PsyADelta = ', FormatFloat(',0.0000000000', psy));
 
     finally
       enc.Free;

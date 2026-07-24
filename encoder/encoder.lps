@@ -9,14 +9,13 @@
         <Filename Value="encoder.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="1165"/>
-        <CursorPos X="65" Y="1197"/>
+        <CursorPos X="62" Y="48"/>
         <UsageCount Value="200"/>
         <Bookmarks Count="4">
-          <Item0 X="3" Y="1551" ID="4"/>
-          <Item1 X="3" Y="1172" ID="3"/>
-          <Item2 X="37" Y="1210" ID="2"/>
-          <Item3 Y="258" ID="1"/>
+          <Item0 X="3" Y="1510" ID="4"/>
+          <Item1 X="3" Y="1131" ID="3"/>
+          <Item2 X="37" Y="1169" ID="2"/>
+          <Item3 Y="231" ID="1"/>
         </Bookmarks>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
@@ -45,7 +44,7 @@
         <EditorIndex Value="3"/>
         <TopLine Value="103"/>
         <CursorPos X="15" Y="185"/>
-        <UsageCount Value="85"/>
+        <UsageCount Value="108"/>
         <Loaded Value="True"/>
       </Unit3>
       <Unit4>
@@ -53,7 +52,7 @@
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="1"/>
         <CursorPos X="59" Y="16"/>
-        <UsageCount Value="85"/>
+        <UsageCount Value="108"/>
         <Loaded Value="True"/>
       </Unit4>
       <Unit5>
@@ -62,7 +61,7 @@
         <EditorIndex Value="4"/>
         <TopLine Value="348"/>
         <CursorPos X="66" Y="395"/>
-        <UsageCount Value="61"/>
+        <UsageCount Value="72"/>
         <Loaded Value="True"/>
       </Unit5>
       <Unit6>
@@ -70,7 +69,7 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="10"/>
         <CursorPos Y="36"/>
-        <UsageCount Value="187"/>
+        <UsageCount Value="185"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit6>
       <Unit7>
@@ -78,20 +77,20 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="66"/>
         <CursorPos Y="99"/>
-        <UsageCount Value="80"/>
+        <UsageCount Value="78"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit7>
       <Unit8>
         <Filename Value="yakmo.pas"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="139"/>
+        <UsageCount Value="137"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit8>
       <Unit9>
         <Filename Value="alglib\fft.pas"/>
         <EditorIndex Value="-1"/>
         <CursorPos X="20" Y="31"/>
-        <UsageCount Value="38"/>
+        <UsageCount Value="36"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit9>
       <Unit10>
@@ -99,7 +98,7 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="1044"/>
         <CursorPos Y="1078"/>
-        <UsageCount Value="47"/>
+        <UsageCount Value="45"/>
       </Unit10>
       <Unit11>
         <Filename Value="alglib\ap.pas"/>
@@ -107,7 +106,7 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="14"/>
         <CursorPos X="10" Y="71"/>
-        <UsageCount Value="21"/>
+        <UsageCount Value="19"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit11>
       <Unit12>
@@ -115,14 +114,14 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="379"/>
         <CursorPos X="3" Y="414"/>
-        <UsageCount Value="15"/>
+        <UsageCount Value="13"/>
       </Unit12>
       <Unit13>
         <Filename Value="C:\lazarus\fpc\3.2.2\source\rtl\x86_64\x86_64.inc"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="617"/>
         <CursorPos X="10" Y="634"/>
-        <UsageCount Value="15"/>
+        <UsageCount Value="13"/>
       </Unit13>
       <Unit14>
         <Filename Value="xalglib.pas"/>
@@ -130,7 +129,7 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="7"/>
         <CursorPos X="5" Y="42"/>
-        <UsageCount Value="24"/>
+        <UsageCount Value="22"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit14>
       <Unit15>
@@ -139,7 +138,7 @@
         <EditorIndex Value="2"/>
         <TopLine Value="164"/>
         <CursorPos X="15" Y="192"/>
-        <UsageCount Value="33"/>
+        <UsageCount Value="44"/>
         <Loaded Value="True"/>
       </Unit15>
     </Units>
@@ -149,123 +148,123 @@
     <JumpHistory Count="30" HistoryIndex="29">
       <Position1>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="517" Column="3" TopLine="513"/>
+        <Caret Line="817" Column="3" TopLine="811"/>
       </Position1>
       <Position2>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="80" Column="17" TopLine="58"/>
+        <Caret Line="110" Column="15" TopLine="85"/>
       </Position2>
       <Position3>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="435" Column="27" TopLine="416"/>
+        <Caret Line="537" Column="3" TopLine="533"/>
       </Position3>
       <Position4>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="57" Column="17" TopLine="41"/>
+        <Caret Line="190" Column="13" TopLine="151"/>
       </Position4>
       <Position5>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="332" Column="3" TopLine="327"/>
+        <Caret Line="189" Column="13" TopLine="151"/>
       </Position5>
       <Position6>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="110" Column="15" TopLine="97"/>
+        <Caret Line="1250" Column="39" TopLine="1207"/>
       </Position6>
       <Position7>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="606" Column="3" TopLine="602"/>
+        <Caret Line="106" Column="17" TopLine="78"/>
       </Position7>
       <Position8>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="111" Column="15" TopLine="71"/>
+        <Caret Line="448" Column="3" TopLine="444"/>
       </Position8>
       <Position9>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="724" Column="22" TopLine="677"/>
+        <Caret Line="80" Column="17" TopLine="52"/>
       </Position9>
       <Position10>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="186" Column="15" TopLine="154"/>
+        <Caret Line="365" Column="25" TopLine="347"/>
       </Position10>
       <Position11>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1074" Column="3" TopLine="1067"/>
+        <Caret Line="83" Column="17" TopLine="52"/>
       </Position11>
       <Position12>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="113" Column="15" TopLine="86"/>
+        <Caret Line="396" Column="11" TopLine="371"/>
       </Position12>
       <Position13>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="871" Column="11" TopLine="836"/>
+        <Caret Line="54" Column="15" TopLine="31"/>
       </Position13>
       <Position14>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="902" Column="8" TopLine="875"/>
+        <Caret Line="243" Column="6" TopLine="215"/>
       </Position14>
       <Position15>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="853" Column="8" TopLine="826"/>
+        <Caret Line="59" Column="17" TopLine="26"/>
       </Position15>
       <Position16>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="916" Column="9" TopLine="887"/>
+        <Caret Line="60" Column="17" TopLine="26"/>
       </Position16>
       <Position17>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="853" Column="16" TopLine="826"/>
+        <Caret Line="57" Column="17" TopLine="26"/>
       </Position17>
       <Position18>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="875" Column="13" TopLine="854"/>
+        <Caret Line="263" Column="3" TopLine="258"/>
       </Position18>
       <Position19>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="853" Column="25" TopLine="826"/>
+        <Caret Line="59" Column="15" TopLine="29"/>
       </Position19>
       <Position20>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="910" Column="6" TopLine="841"/>
+        <Caret Line="308" Column="3" TopLine="303"/>
       </Position20>
       <Position21>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="872" Column="8" TopLine="845"/>
+        <Caret Line="58" Column="15" TopLine="31"/>
       </Position21>
       <Position22>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="895" TopLine="854"/>
+        <Caret Line="274" Column="3" TopLine="269"/>
       </Position22>
       <Position23>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="112" Column="15" TopLine="86"/>
+        <Caret Line="80" Column="15" TopLine="39"/>
       </Position23>
       <Position24>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="835" Column="30" TopLine="803"/>
+        <Caret Line="361" Column="12" TopLine="347"/>
       </Position24>
       <Position25>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="16" Column="5"/>
+        <Caret Line="83" Column="17" TopLine="52"/>
       </Position25>
       <Position26>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1569" Column="55" TopLine="1542"/>
+        <Caret Line="395" Column="3" TopLine="383"/>
       </Position26>
       <Position27>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="827" Column="13" TopLine="777"/>
+        <Caret Line="84" Column="15" TopLine="55"/>
       </Position27>
       <Position28>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="194" Column="15" TopLine="146"/>
+        <Caret Line="431" Column="25" TopLine="413"/>
       </Position28>
       <Position29>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1400" Column="3" TopLine="1392"/>
+        <Caret Line="177" Column="18" TopLine="147"/>
       </Position29>
       <Position30>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="192" Column="15" TopLine="167"/>
+        <Caret Line="1322" Column="3" TopLine="1320"/>
       </Position30>
     </JumpHistory>
     <RunParams>
@@ -277,26 +276,26 @@
         <Item1 Value="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
       </List0>
       <List1 Name="CommandLineParameters" Count="20">
-        <Item1 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128"/>
-        <Item2 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d"/>
-        <Item3 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs16 -br64"/>
-        <Item4 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs16 -br32 -py"/>
-        <Item5 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs16 -br32"/>
-        <Item6 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs10 -br32"/>
-        <Item7 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs10 -br64"/>
-        <Item8 Value="opus_test\mo_b_44_2.wav out1.wav -v -d -cs110 -br64"/>
-        <Item9 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -br128"/>
-        <Item10 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs6 -br128"/>
-        <Item11 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs16"/>
-        <Item12 Value="&quot;C:\soundchunks\my_test\test2.wav&quot; ..\out1.wav -v -d"/>
-        <Item13 Value="..\lame_test\mstest.wav ..\ms.wav -v"/>
-        <Item14 Value="..\lame_test\mstest.wav ..\ms.wav -v -py"/>
-        <Item15 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v"/>
-        <Item16 Value="..\lame_test\mstest.wav ..\ms.wav -v -fl500 -cpf256 -py -pr7"/>
-        <Item17 Value="..\lame_test\mstest.wav ..\ms.wav -v -fl500 -cpf256 -py"/>
-        <Item18 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -fl1000"/>
-        <Item19 Value="&quot;..\wayfinder - fr-025 (single edit).wav&quot; ..\fr025_ -pr0"/>
-        <Item20 Value="&quot;..\wayfinder - fr-025 (single edit).wav&quot; ..\fr025_ -cb0 -pr0"/>
+        <Item1 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128 -pr0"/>
+        <Item2 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128"/>
+        <Item3 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d"/>
+        <Item4 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs16 -br64"/>
+        <Item5 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs16 -br32 -py"/>
+        <Item6 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs16 -br32"/>
+        <Item7 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs10 -br32"/>
+        <Item8 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs10 -br64"/>
+        <Item9 Value="opus_test\mo_b_44_2.wav out1.wav -v -d -cs110 -br64"/>
+        <Item10 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -br128"/>
+        <Item11 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs6 -br128"/>
+        <Item12 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs16"/>
+        <Item13 Value="&quot;C:\soundchunks\my_test\test2.wav&quot; ..\out1.wav -v -d"/>
+        <Item14 Value="..\lame_test\mstest.wav ..\ms.wav -v"/>
+        <Item15 Value="..\lame_test\mstest.wav ..\ms.wav -v -py"/>
+        <Item16 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v"/>
+        <Item17 Value="..\lame_test\mstest.wav ..\ms.wav -v -fl500 -cpf256 -py -pr7"/>
+        <Item18 Value="..\lame_test\mstest.wav ..\ms.wav -v -fl500 -cpf256 -py"/>
+        <Item19 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -fl1000"/>
+        <Item20 Value="&quot;..\wayfinder - fr-025 (single edit).wav&quot; ..\fr025_ -pr0"/>
       </List1>
       <List2 Name="WorkingDirectory" Type="File" Count="1"/>
     </HistoryLists>
