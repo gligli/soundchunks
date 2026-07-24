@@ -101,7 +101,6 @@ type
     ChunkBitDepth: Integer; // 8 or 12 Bits
     ChunkSize: Integer;
     ChunksPerFrame: Integer;
-    ReduceBassBand: Boolean;
     VariableFrameSizeRatio: Double;
     TrebleBoost: Boolean;
     ChunkBlend: Integer;
@@ -1118,7 +1117,6 @@ begin
   HighCut := 24000.0;
   ChunkBitDepth := 8;
   ChunkSize := 8;
-  ReduceBassBand := True;
   TrebleBoost := False;
   VariableFrameSizeRatio := 1.0;
   ChunkBlend := 0;
@@ -1497,7 +1495,6 @@ begin
       WriteLn(#9'-d'#9'debug mode (outputs decoded WAVs)');
       WriteLn(#9'-cs'#9'chunk size');
       WriteLn(#9'-cpf'#9'max. chunks per frame (256-4096)');
-      WriteLn(#9'-pbb'#9'disable lossy compression on bass band');
       WriteLn(#9'-cbd'#9'chunk bit depth (8,12)');
       WriteLn(#9'-pr'#9'K-means precision; 0: "lossless" mode');
       WriteLn(#9'-cb'#9'chunk blend');
@@ -1521,7 +1518,6 @@ begin
       enc.ChunkSize := round(ParamValue('-cs', enc.ChunkSize));
       enc.ChunksPerFrame := EnsureRange(round(ParamValue('-cpf', enc.ChunksPerFrame)), 256, CMaxChunksPerFrame);
       enc.Verbose := HasParam('-v');
-      enc.ReduceBassBand := not HasParam('-pbb');
       enc.ChunkBlend := EnsureRange(round(ParamValue('-cb', enc.ChunkBlend)), 0, enc.ChunkSize div 2);
       enc.PythonReduce := HasParam('-py');
       enc.DebugMode := HasParam('-d');
@@ -1535,7 +1531,6 @@ begin
       begin
         WriteLn('ChunkSize = ', enc.ChunkSize);
         WriteLn('MaxChunksPerFrame = ', enc.ChunksPerFrame);
-        WriteLn('ReduceBassBand = ', BoolToStr(enc.ReduceBassBand, True));
         WriteLn('ChunkBitDepth = ', enc.ChunkBitDepth);
         WriteLn('Precision = ', enc.Precision);
         WriteLn('ChunkBlend = ', enc.ChunkBlend);
@@ -1555,7 +1550,7 @@ begin
         enc.SaveGSC;
 
       psy := enc.ComputePsyADelta(enc.srcData, enc.dstData);
-      WriteLn('PsyADelta = ', FormatFloat(',0.0000000000', psy));
+      WriteLn('PsyADelta = ', FormatFloat('0.0000000000', psy));
 
     finally
       enc.Free;
