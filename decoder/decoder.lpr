@@ -10,7 +10,7 @@ const
   CVariableCodingBlockSize = 3;
 
 var
-  CAttrLookup : array[Boolean {negative?}, 0 .. CMaxAttenuation] of Integer;
+  GAttrLookup : array[Boolean {negative?}, 0 .. CMaxAttenuation] of Integer;
 
 
   function CreateWAVHeader(channels: word; resolution: word; rate, size: longint): TWavHeader;
@@ -36,8 +36,9 @@ var
 
   procedure GSCUnpack(ASourceStream, ADestStream: TStream);
   var
-    i, j, k, b, s1, s2, bitCount, variableCodingHeader, attr, chunkSmp: Integer;
+    iChunk, iAttenuation, iSample, iChannel, b, s1, s2, bitCount, variableCodingHeader, attr, chunkDelta, delta: Integer;
     w: Word;
+    channelSample: TIntegerDynArray;
     chunkIndex: TIntegerDynArray;
     chunkNegative, chunkReversed: TBooleanDynArray;
     StreamVersion, ChannelCount, ChunkBitDepth, ChunkSize, ChunkCount: Integer;
@@ -87,12 +88,12 @@ var
 
         law := CAttenuationLawNumerator / AttenuationDivider;
         lawAcc := 1.0;
-        for i := 0 to CMaxAttenuation do
+        for iAttenuation := 0 to CMaxAttenuation do
         begin
-          lawAcc += law * i;
+          lawAcc += law * iAttenuation;
 
-          CAttrLookup[False, i] := round(CAttrMul / lawAcc);
-          CAttrLookup[True, i] := -round(CAttrMul / lawAcc);
+          GAttrLookup[False, iAttenuation] := round(CAttrMul / lawAcc);
+          GAttrLookup[True, iAttenuation] := -round(CAttrMul / lawAcc);
         end;
 
         if memStream.Position = 0 then
@@ -112,11 +113,11 @@ var
 
         // depack Attenuations
 
-        for i := 0 to ChunkCount div 2 - 1 do
+        for iChunk := 0 to ChunkCount div 2 - 1 do
         begin
           b := ASourceStream.ReadByte;
-          Attenuations[i * 2 + 0] := (b and $f0) shr 4;
-          Attenuations[i * 2 + 1] := (b and $0f);
+          Attenuations[iChunk * 2 + 0] := (b and $f0) shr 4;
+          Attenuations[iChunk * 2 + 1] := (b and $0f);
         end;
 
         if Odd(ChunkCount) then
@@ -129,23 +130,23 @@ var
 
         case ChunkBitDepth of
           8:
-            for i := 0 to ChunkCount - 1 do
-              for j := 0 to ChunkSize - 1 do
+            for iChunk := 0 to ChunkCount - 1 do
+              for iSample := 0 to ChunkSize - 1 do
               begin
                 b := ASourceStream.ReadByte;
-                Chunks[i, j] := (b + Low(ShortInt)) * 2047 div High(ShortInt);
+                Chunks[iChunk, iSample] := (b + Low(ShortInt)) * 2047 div High(ShortInt);
               end;
           12:
-            for i := 0 to ChunkCount - 1 do
+            for iChunk := 0 to ChunkCount - 1 do
             begin
-              for j := 0 to ChunkSize div 2 - 1 do
+              for iSample := 0 to ChunkSize div 2 - 1 do
               begin
                 b := ASourceStream.ReadByte;
                 s1 := Integer(ASourceStream.ReadByte) or ((b and $f0) shl 4);
                 s2 := Integer(ASourceStream.ReadByte) or ((b and $0f) shl 8);
 
-                Chunks[i, j * 2 + 0] := s1 - 2048;
-                Chunks[i, j * 2 + 1] := s2 - 2048;
+                Chunks[iChunk, iSample * 2 + 0] := s1 - 2048;
+                Chunks[iChunk, iSample * 2 + 1] := s2 - 2048;
               end;
 
               if Odd(ChunkSize) then
@@ -153,7 +154,7 @@ var
                 b := ASourceStream.ReadByte;
                 s1 := Integer(ASourceStream.ReadByte) or ((b and $f0) shl 4);
 
-                Chunks[i, ChunkSize - 1] := s1 - 2048;
+                Chunks[iChunk, ChunkSize - 1] := s1 - 2048;
               end;
             end;
           else
@@ -162,43 +163,62 @@ var
 
         // depack Frames
 
-        FrameLength := ASourceStream.ReadDWord;
-
         SetLength(chunkIndex, ChannelCount);
         SetLength(chunkNegative, ChannelCount);
         SetLength(chunkReversed, ChannelCount);
+        SetLength(channelSample, ChannelCount);
+
+        FrameLength := ASourceStream.ReadDWord;
+
+
+        if StreamVersion > 1 then
+          for iChannel := 0 to ChannelCount - 1 do
+            channelSample[iChannel] := SmallInt(ASourceStream.ReadWord);
 
         bits := 0;
         bitCount := 0;
         variableCodingHeader := -1;
-        for i := 0 to FrameLength - 1 do
+        for iChunk := 0 to FrameLength - 1 do
         begin
-          for k := 0 to ChannelCount - 1 do
+          for iChannel := 0 to ChannelCount - 1 do
           begin
             FillBits;
 
-            chunkNegative[k] := GetBits(1) <> 0;
+            chunkNegative[iChannel] := GetBits(1) <> 0;
 
             if StreamVersion > 0 then
-              chunkReversed[k] := GetBits(1) <> 0; // flag starting version 1
+              chunkReversed[iChannel] := GetBits(1) <> 0; // flag starting version 1
 
             if GetBits(1) <> 0 then // has new header?
               variableCodingHeader := GetBits(CVariableCodingHeaderSize);
 
             FillBits;
 
-            chunkIndex[k] := 0;
-            for j := 0 to variableCodingHeader do
-              chunkIndex[k] := (chunkIndex[k] shl CVariableCodingBlockSize) or GetBits(CVariableCodingBlockSize);
+            chunkIndex[iChannel] := 0;
+            for iSample := 0 to variableCodingHeader do
+              chunkIndex[iChannel] := (chunkIndex[iChannel] shl CVariableCodingBlockSize) or GetBits(CVariableCodingBlockSize);
           end;
 
-          for j := 0 to ChunkSize - 1 do
-            for k := 0 to ChannelCount - 1 do
+          for iSample := 0 to ChunkSize - 1 do
+            for iChannel := 0 to ChannelCount - 1 do
             begin
-              attr := CAttrLookup[chunkNegative[k], Attenuations[chunkIndex[k]]];
-              chunkSmp := Chunks[chunkIndex[k], IfThen(chunkReversed[k], ChunkSize - 1 - j, j)];
+              attr := GAttrLookup[chunkNegative[iChannel], Attenuations[chunkIndex[iChannel]]];
+              chunkDelta := Chunks[chunkIndex[iChannel], IfThen(chunkReversed[iChannel], ChunkSize - 1 - iSample, iSample)];
 
-              memStream.WriteWord(Cardinal(attr * chunkSmp) shr 15);
+              delta := SarLongint(attr * chunkDelta - Low(SmallInt) div 2, 15);
+
+              if StreamVersion > 1 then
+              begin
+                channelSample[iChannel] += delta;
+
+                Assert(InRange(channelSample[iChannel], Low(SmallInt), High(SmallInt)));
+                memStream.WriteWord(Word(channelSample[iChannel]));
+              end
+              else
+              begin
+                Assert(InRange(delta, Low(SmallInt), High(SmallInt)));
+                memStream.WriteWord(Word(delta));
+              end;
             end;
         end;
 
