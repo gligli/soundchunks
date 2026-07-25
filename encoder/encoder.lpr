@@ -34,12 +34,11 @@ type
     dstAttenuation: Integer;
 
     srcData: TDoubleDynArray;
-    dct: TDoubleDynArray;
     dstData: TSmallIntDynArray;
 
     constructor Create(frm: TFrame; idx, bandIdx: Integer; srcDta: PDouble);
 
-    procedure ComputeDCT;
+    function ComputeDCT: TDoubleDynArray;
     procedure ComputeDstAttributes;
     procedure MakeDstData;
   end;
@@ -205,15 +204,15 @@ begin
     Move(srcDta[idx * (frame.encoder.ChunkSize - frame.encoder.ChunkBlend)], srcData[0], frame.encoder.ChunkSize * SizeOf(Double));
 end;
 
-procedure TChunk.ComputeDCT;
+function TChunk.ComputeDCT: TDoubleDynArray;
 var
-  i: Integer;
+  iSample: Integer;
   data: TDoubleDynArray;
 begin
   SetLength(data, Length(srcData));
-  for i := 0 to High(data) do
-    data[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(data) - i, i)], frame.encoder.ChunkBitDepth, 0, dstNegative, frame.AttenuationLaw).AsDouble;
-  dct := TEncoder.ComputeDCT(Length(data), data);
+  for iSample := 0 to High(data) do
+    data[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(data) - iSample, iSample)], 2, 0, dstNegative, frame.AttenuationLaw).AsDouble;
+  Result := TEncoder.ComputeDCT(Length(data), data);
 end;
 
 procedure TChunk.ComputeDstAttributes;
@@ -261,7 +260,6 @@ end;
 
 constructor TFrame.Create(enc: TEncoder; idx, startSmp, endSmp: Integer);
 var
-  i: Integer;
   iChannel, iSample: Integer;
   prevSmp, smp: Double;
 begin
@@ -414,7 +412,7 @@ end;
 
 procedure TFrame.Reduce;
 var
-  i, j, k, prec, colCount, clusterCount: Integer;
+  i, j, iSample, prec, colCount, clusterCount: Integer;
   chunk: TChunk;
   centroid: TDoubleDynArray;
   Clusters: TIntegerDynArray;
@@ -426,14 +424,13 @@ var
 begin
   prec := encoder.Precision;
 
-  colCount := Length(chunkRefs[0].dct);
+  colCount := encoder.ChunkSize;
   clusterCount := encoder.ChunksPerFrame;
 
-  SetLength(Dataset, chunkRefs.Count, colCount);
+  SetLength(Dataset, chunkRefs.Count);
 
   for i := 0 to chunkRefs.Count - 1 do
-    for j := 0 to colCount - 1 do
-      Dataset[i, j] := chunkRefs[i].dct[j];
+    Dataset[i] := chunkRefs[i].ComputeDCT;
 
   if (prec > 0) and (chunkRefs.Count > clusterCount) then
   begin
@@ -473,20 +470,22 @@ begin
         CIList.Add(TCountIndex.Create);
         CIList[i].Index := i;
 
-        for k := 0 to encoder.ChunkSize - 1 do
-          centroid[k] := 0;
+        for iSample := 0 to encoder.ChunkSize - 1 do
+          centroid[iSample] := 0;
 
         for j := 0 to High(Clusters) do
           if Clusters[j] = i then
           begin
-            for k := 0 to encoder.ChunkSize - 1 do
-              centroid[k] += chunkRefs[j].srcData[IfThen(chunkRefs[j].dstReversed, encoder.ChunkSize - 1 - k, k)] * IfThen(chunkRefs[j].dstNegative, -1, 1);
+            chunk := chunkRefs[j];
+
+            for iSample := 0 to encoder.ChunkSize - 1 do
+              centroid[iSample] += TEncoder.makeOutputSample(chunk.srcData[IfThen(chunk.dstReversed, High(centroid) - iSample, iSample)], 2, 0, chunk.dstNegative, AttenuationLaw).AsDouble;
 
             Inc(CIList[i].Count);
           end;
 
-        for k := 0 to encoder.ChunkSize - 1 do
-          Centroids[i, k] := DivDef(centroid[k], CIList[i].Count, 0.0);
+        for iSample := 0 to encoder.ChunkSize - 1 do
+          Centroids[i, iSample] := DivDef(centroid[iSample], CIList[i].Count, 0.0);
       end;
       CIList.Sort(@CompareCountIndexInv);
       SetLength(CIInv, clusterCount);
@@ -498,8 +497,8 @@ begin
         chunk := TChunk.Create(Self, i, -1, nil);
         reducedChunks.Add(chunk);
 
-        for j := 0 to encoder.chunkSize - 1 do
-          chunk.srcData[j] := NanDef(Centroids[CIList[i].Index][j], 0.0);
+        for iSample := 0 to encoder.chunkSize - 1 do
+          chunk.srcData[iSample] := Centroids[CIList[i].Index, iSample];
 
         CIInv[CIList[i].Index] := i;
 
@@ -1185,8 +1184,6 @@ begin
   WriteLn('MakeDstData');
 
   SetLength(dstData, ChannelCount, SampleCount);
-  for iChannel := 0 to ChannelCount - 1 do
-    FillWord(dstData[iChannel, 0], Length(dstData), 0);
 
   for iChannel := 0 to ChannelCount - 1 do
   begin
