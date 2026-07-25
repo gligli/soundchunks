@@ -312,7 +312,7 @@ procedure TFrame.FindGain;
 var
   iGain, iChannel, iChunk, iSample, bestMul, atten, pos: Integer;
   best, v, fs, law: Double;
-  os: SmallInt;
+  os: Integer;
   tmp: TDoubleDynArray;
 begin
   SetLength(tmp, encoder.ChunkSize);
@@ -969,7 +969,7 @@ end;
 
 procedure TEncoder.PrepareFrames;
 const
-  CVariableCodingRatio = 0.71;
+  CVariableCodingRatio = 0.72;
 var
   j, i, k, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
