@@ -3,14 +3,15 @@ program decoder;
 uses Types, SysUtils, Classes, Math, extern;
 
 const
-  CAttrMul = round((High(SmallInt) + 1) * (High(SmallInt) / 2047));
+  CAttrShift = 15;
+  CAttrMul = round((1 shl CAttrShift) * (High(SmallInt) / 2047));
   CMaxAttenuation = 15;
   CAttenuationLawNumerator = 1;
   CVariableCodingHeaderSize = 2;
   CVariableCodingBlockSize = 3;
 
 var
-  GAttrLookup : array[Boolean {negative?}, 0 .. CMaxAttenuation] of Integer;
+  GAttenuationLookup : array[0 .. CMaxAttenuation] of Integer;
 
 
   function CreateWAVHeader(channels: word; resolution: word; rate, size: longint): TWavHeader;
@@ -36,7 +37,7 @@ var
 
   procedure GSCUnpack(ASourceStream, ADestStream: TStream);
   var
-    iChunk, iAttenuation, iSample, iChannel, b, s1, s2, bitCount, variableCodingHeader, attr, chunkDelta, delta: Integer;
+    iChunk, iAttenuation, iSample, iChannel, b, s1, s2, bitCount, variableCodingHeader, delta, finalSample, clippingErrors: Integer;
     w: Word;
     channelSample: TIntegerDynArray;
     chunkIndex: TIntegerDynArray;
@@ -67,7 +68,14 @@ var
       end;
     end;
 
+    function Attenuate(ASample, AChunkIdx: Integer): SmallInt;
+    begin
+      Result := SarLongint(ASample * GAttenuationLookup[Attenuations[AChunkIdx]] + (1 shl (CAttrShift - 1)), CAttrShift);
+    end;
+
   begin
+    clippingErrors := 0;
+
     memStream := TMemoryStream.Create;
     try
       while ASourceStream.Position <> ASourceStream.Size do
@@ -91,9 +99,7 @@ var
         for iAttenuation := 0 to CMaxAttenuation do
         begin
           lawAcc += law * iAttenuation;
-
-          GAttrLookup[False, iAttenuation] := round(CAttrMul / lawAcc);
-          GAttrLookup[True, iAttenuation] := -round(CAttrMul / lawAcc);
+          GAttenuationLookup[iAttenuation] := round(CAttrMul / lawAcc);
         end;
 
         if memStream.Position = 0 then
@@ -134,7 +140,7 @@ var
               for iSample := 0 to ChunkSize - 1 do
               begin
                 b := ASourceStream.ReadByte;
-                Chunks[iChunk, iSample] := (b + Low(ShortInt)) * 2047 div High(ShortInt);
+                Chunks[iChunk, iSample] := Attenuate((b + Low(ShortInt)) * 2047 div High(ShortInt), iChunk);
               end;
           12:
             for iChunk := 0 to ChunkCount - 1 do
@@ -145,8 +151,8 @@ var
                 s1 := Integer(ASourceStream.ReadByte) or ((b and $f0) shl 4);
                 s2 := Integer(ASourceStream.ReadByte) or ((b and $0f) shl 8);
 
-                Chunks[iChunk, iSample * 2 + 0] := s1 - 2048;
-                Chunks[iChunk, iSample * 2 + 1] := s2 - 2048;
+                Chunks[iChunk, iSample * 2 + 0] := Attenuate(s1 - 2048, iChunk);
+                Chunks[iChunk, iSample * 2 + 1] := Attenuate(s2 - 2048, iChunk);
               end;
 
               if Odd(ChunkSize) then
@@ -154,7 +160,7 @@ var
                 b := ASourceStream.ReadByte;
                 s1 := Integer(ASourceStream.ReadByte) or ((b and $f0) shl 4);
 
-                Chunks[iChunk, ChunkSize - 1] := s1 - 2048;
+                Chunks[iChunk, ChunkSize - 1] := Attenuate(s1 - 2048, iChunk);
               end;
             end;
           else
@@ -202,17 +208,22 @@ var
           for iSample := 0 to ChunkSize - 1 do
             for iChannel := 0 to ChannelCount - 1 do
             begin
-              attr := GAttrLookup[chunkNegative[iChannel], Attenuations[chunkIndex[iChannel]]];
-              chunkDelta := Chunks[chunkIndex[iChannel], IfThen(chunkReversed[iChannel], ChunkSize - 1 - iSample, iSample)];
-
-              delta := SarLongint(attr * chunkDelta - Low(SmallInt) div 2, 15);
+              delta := Chunks[chunkIndex[iChannel], IfThen(chunkReversed[iChannel], ChunkSize - 1 - iSample, iSample)];
+              if chunkNegative[iChannel] then
+                delta := -delta;
 
               if StreamVersion > 1 then
               begin
                 channelSample[iChannel] += delta;
 
-                Assert(InRange(channelSample[iChannel], Low(SmallInt), High(SmallInt)));
-                memStream.WriteWord(Word(channelSample[iChannel]));
+                finalSample := channelSample[iChannel];
+                if not InRange(finalSample, Low(SmallInt), High(SmallInt)) then
+                begin
+                  Inc(clippingErrors);
+                  finalSample := EnsureRange(finalSample, Low(SmallInt), High(SmallInt));
+                end;
+
+                memStream.WriteWord(Word(finalSample));
               end
               else
               begin
@@ -234,6 +245,14 @@ var
       memStream.Seek(0, soFromBeginning);
       ADestStream.Write(CreateWAVHeader(ChannelCount, 16, SampleRate, memStream.Size), SizeOf(TWavHeader));
       ADestStream.CopyFrom(memStream, memStream.Size);
+
+
+      if clippingErrors > 0 then
+      begin
+        WriteLn;
+        WriteLn('/!\ ', clippingErrors, ' clipping errors.');
+      end;
+
     finally
       memStream.Free;
     end;
