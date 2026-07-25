@@ -123,6 +123,7 @@ type
 
     frames: TFrameList;
 
+    class function simpleRound(smp: Double): Integer;
     class function make16BitSample(smp: Double): SmallInt;
     class function makeOutputSample(smp: Double; OutBitDepth, Attenuation: Integer; Negative: Boolean; Law: Double): TOutputSample;
     class function makeFloatSample(smp: SmallInt): Double;
@@ -211,7 +212,7 @@ var
 begin
   SetLength(data, Length(srcData));
   for i := 0 to High(data) do
-    data[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(data) - i, i)], frame.encoder.ChunkBitDepth, 1, dstNegative, frame.AttenuationLaw).AsDouble;
+    data[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(data) - i, i)], frame.encoder.ChunkBitDepth, 0, dstNegative, frame.AttenuationLaw).AsDouble;
   dct := TEncoder.ComputeDCT(Length(data), data);
 end;
 
@@ -539,9 +540,9 @@ end;
 
 procedure TFrame.KNNFit;
 var
-  iChunk, iSample, iSampleCribble, iChannel, dsIdx, bestIdx: Integer;
+  iChunk, iSample, iSampleCribble, iChannel, dsIdx, bestIdx, iteration: Integer;
   err: TANNFloat;
-  curTruthAcc, curLossyAcc, bestErr: Double;
+  corr, curTruthAcc, curLossyAcc, bestErr, skew: Double;
   truthAcc, lossyAcc: TDoubleDynArray;
   DCTDataset, PlainDataset: TANNFloatDynArray2;
   query: TANNFloatDynArray;
@@ -573,10 +574,10 @@ begin
       PlainDataset[dsIdx + 3, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, True, AttenuationLaw);
     end;
 
-    DCTDataset[dsIdx + 0] := TEncoder.ComputeDCT4(encoder.ChunkSize, PlainDataset[dsIdx + 0]);
-    DCTDataset[dsIdx + 1] := TEncoder.ComputeDCT4(encoder.ChunkSize, PlainDataset[dsIdx + 1]);
-    DCTDataset[dsIdx + 2] := TEncoder.ComputeDCT4(encoder.ChunkSize, PlainDataset[dsIdx + 2]);
-    DCTDataset[dsIdx + 3] := TEncoder.ComputeDCT4(encoder.ChunkSize, PlainDataset[dsIdx + 3]);
+    DCTDataset[dsIdx + 0] := TEncoder.ComputeDCT(encoder.ChunkSize, PlainDataset[dsIdx + 0]);
+    DCTDataset[dsIdx + 1] := TEncoder.ComputeDCT(encoder.ChunkSize, PlainDataset[dsIdx + 1]);
+    DCTDataset[dsIdx + 2] := TEncoder.ComputeDCT(encoder.ChunkSize, PlainDataset[dsIdx + 2]);
+    DCTDataset[dsIdx + 3] := TEncoder.ComputeDCT(encoder.ChunkSize, PlainDataset[dsIdx + 3]);
     Inc(dsIdx, 4);
   end;
 
@@ -586,38 +587,77 @@ begin
     begin
       chunk := chunkRefs[iChunk];
 
+      corr := 1.0;
       curTruthAcc := truthAcc[chunk.channel];
       curLossyAcc := lossyAcc[chunk.channel];
 
-      bestIdx := -1;
-      bestErr := Infinity;
-      for iSampleCribble := 0 to encoder.ChunkSize - 1 do
-      begin
-        for iSample := 0 to encoder.ChunkSize - 1 do
-          query[iSample] := chunk.srcData[iSample];
+      iteration := 0;
+      repeat
 
-        query[iSampleCribble] -= curLossyAcc - curTruthAcc;
-
-        query := TEncoder.ComputeDCT4(encoder.ChunkSize, query);
-
-        dsIdx := ann_kdtree_search(KDT, @query[0], 0.0, @err);
-
-        if err < bestErr then
+        bestIdx := -1;
+        bestErr := Infinity;
+        for iSampleCribble := 0 to encoder.ChunkSize - 1 do
         begin
-          bestIdx := dsIdx;
-          bestErr := err;
+          // cumulate
+          for iSample := 0 to encoder.ChunkSize - 1 do
+          begin
+            query[iSample] := chunk.srcData[iSample];
+
+            if iSample = 0 then
+              query[iSample] += curTruthAcc
+            else
+              query[iSample] += query[iSample - 1];
+
+            // also apply skew removal
+            if iSample = iSampleCribble then
+              query[iSampleCribble] -= curLossyAcc - curTruthAcc;
+          end;
+
+          // clamp
+          for iSample := 0 to encoder.ChunkSize - 1 do
+            query[iSample] := EnsureRange(query[iSample], -corr, corr);
+
+          // decumulate
+          for iSample := encoder.ChunkSize - 1 downto 1 do
+            query[iSample] -= query[iSample - 1];
+          query[0] -= curTruthAcc;
+
+          // DCT
+          query := TEncoder.ComputeDCT(encoder.ChunkSize, query);
+
+          // query
+          dsIdx := ann_kdtree_search(KDT, @query[0], 0.0, @err);
+
+          if err < bestErr then
+          begin
+            bestIdx := dsIdx;
+            bestErr := err;
+          end;
         end;
-      end;
 
-      chunk.dstNegative := bestIdx and 1 <> 0;
-      chunk.dstReversed := bestIdx and 2 <> 0;
-      chunk.reducedChunk := reducedChunks[bestIdx shr 2];
+        chunk.dstNegative := bestIdx and 1 <> 0;
+        chunk.dstReversed := bestIdx and 2 <> 0;
+        chunk.reducedChunk := reducedChunks[bestIdx shr 2];
 
-      for iSample := 0 to encoder.ChunkSize - 1 do
-      begin
-        curTruthAcc += chunk.srcData[iSample];
-        curLossyAcc += PlainDataset[bestIdx, iSample];
-      end;
+        skew := (iteration shr 1) / (1 shl encoder.ChunkBitDepth) * (1.0 - 2.0 * (iteration and 1));
+        corr := 1.0;
+        curTruthAcc := truthAcc[chunk.channel];
+        curLossyAcc := lossyAcc[chunk.channel];
+        for iSample := 0 to encoder.ChunkSize - 1 do
+        begin
+          curTruthAcc += chunk.srcData[iSample];
+          curLossyAcc += PlainDataset[bestIdx, iSample];
+
+          if Abs(curLossyAcc) >= 1.0 then
+            corr := min(corr, 2.0 - Abs(curLossyAcc) - skew);
+        end;
+
+        //if iteration >= 0 then
+        //  WriteLn(index:8,iChunk:8,bestIdx:8,iteration:8,corrLo:12:6,corrHi:12:6);
+
+        Inc(iteration);
+
+      until corr = 1.0;
 
       Inc(chunk.reducedChunk.useCount);
 
@@ -1114,9 +1154,9 @@ begin
   BitRate := -1;
   Precision := 1;
   LowCut := 0.0;
-  HighCut := 24000.0;
+  HighCut := 18000.0;
   ChunkBitDepth := 8;
-  ChunkSize := 8;
+  ChunkSize := 4;
   TrebleBoost := False;
   VariableFrameSizeRatio := 1.0;
   ChunkBlend := 0;
@@ -1140,22 +1180,21 @@ end;
 
 procedure TEncoder.MakeDstData;
 var
-  i, j, k, l, pos: Integer;
-  smp: Double;
+  iSample, iFrame, iChannel, pos: Integer;
 begin
   WriteLn('MakeDstData');
 
   SetLength(dstData, ChannelCount, SampleCount);
-  for l := 0 to ChannelCount - 1 do
-    FillWord(dstData[l, 0], Length(dstData), 0);
+  for iChannel := 0 to ChannelCount - 1 do
+    FillWord(dstData[iChannel, 0], Length(dstData), 0);
 
-  for l := 0 to ChannelCount - 1 do
+  for iChannel := 0 to ChannelCount - 1 do
   begin
     pos := 0;
-    for k := 0 to frames.Count - 1 do
-      for i := 0 to frames[k].SampleCount - 1 do
+    for iFrame := 0 to frames.Count - 1 do
+      for iSample := 0 to frames[iFrame].SampleCount - 1 do
       begin
-        dstData[l, pos] := make16BitSample(frames[k].dstData[l, i]);
+        dstData[iChannel, pos] := make16BitSample(frames[iFrame].dstData[iChannel, iSample]);
         Inc(pos);
       end;
   end;
@@ -1215,9 +1254,14 @@ begin
   end;
 end;
 
+class function TEncoder.simpleRound(smp: Double): Integer;
+begin
+  Result := Trunc(smp + 0.5);
+end;
+
 class function TEncoder.make16BitSample(smp: Double): SmallInt;
 begin
-  Result := EnsureRange(round(smp * High(SmallInt)), Low(SmallInt), High(SmallInt));
+  Result := EnsureRange(simpleRound(smp * High(SmallInt)), Low(SmallInt), High(SmallInt));
 end;
 
 class function TEncoder.makeFloatSample(smp: SmallInt): Double;
@@ -1237,7 +1281,7 @@ begin
   obd := (1 shl (OutBitDepth - 1)) - 1;
   smp16 := smp * obd * coeff;
   if Negative then smp16 := -smp16;
-  Result.AsInteger := EnsureRange(round(smp16), -obd, obd);
+  Result.AsInteger := EnsureRange(simpleRound(smp16), -obd, obd);
   Result.AsDouble := EnsureRange(smp16, -obd, obd);
 end;
 
@@ -1465,9 +1509,6 @@ end;
 
 var
   enc: TEncoder;
-  i: Integer;
-  psy: double;
-  s: String;
 begin
   try
     FormatSettings.DecimalSeparator := '.';
@@ -1549,8 +1590,7 @@ begin
       if enc.Precision > 0 then
         enc.SaveGSC;
 
-      psy := enc.ComputePsyADelta(enc.srcData, enc.dstData);
-      WriteLn('PsyADelta = ', FormatFloat('0.0000000000', psy));
+      WriteLn('PsyADelta = ', FormatFloat('0.0000000000', enc.ComputePsyADelta(enc.srcData, enc.dstData)));
 
     finally
       enc.Free;

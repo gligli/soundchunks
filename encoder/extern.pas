@@ -13,6 +13,7 @@ type
   TDoubleDynArray2 = array of TDoubleDynArray;
   TDoubleDynArray3 = array of TDoubleDynArray2;
   TSmallIntDynArray2 = array of TSmallIntDynArray;
+  TIntegerDynArray2 = array of TIntegerDynArray;
 
   { format of WAV file header }
   TWavHeader = record         { parameter description }
