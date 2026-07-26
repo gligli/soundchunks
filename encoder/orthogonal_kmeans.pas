@@ -756,7 +756,7 @@ begin
   init();
   moved := Length(FPoints);
 
-  iter_lim := IfThen( FOpt.iter < 0, High(Cardinal), FOpt.iter);
+  iter_lim := IfThen(FOpt.iter < 0, High(Cardinal), FOpt.iter);
 
   for i := 0 to iter_lim do // find neighbour center
   begin

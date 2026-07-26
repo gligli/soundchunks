@@ -115,20 +115,20 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128 -pr0"/>
+        <CommandLineParams Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128 -py"/>
         <LaunchingApplication PathPlusParams="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128 -pr0"/>
+            <CommandLineParams Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128 -py"/>
             <LaunchingApplication PathPlusParams="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
           </local>
         </Mode0>
       </Modes>
     </RunParams>
-    <Units Count="5">
+    <Units Count="6">
       <Unit0>
         <Filename Value="encoder.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -149,6 +149,11 @@
         <Filename Value="mtpool.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit4>
+      <Unit5>
+        <Filename Value="parallelminibatchkmeans.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="ParallelMiniBatchKMeans"/>
+      </Unit5>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

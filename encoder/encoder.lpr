@@ -39,6 +39,7 @@ type
     constructor Create(frm: TFrame; idx, bandIdx: Integer; srcDta: PDouble);
 
     function ComputeDCT: TDoubleDynArray;
+    procedure ComputeFromInvDCT(const InvDCT: TDoubleDynArray);
     procedure ComputeDstAttributes;
     procedure MakeDstData;
   end;
@@ -86,7 +87,7 @@ type
   TEncoder = class
   type
     TOutputSample = record
-      AsInteger: Integer;
+      AsInt: SmallInt;
       AsDouble: Double;
     end;
   public
@@ -215,6 +216,11 @@ begin
   Result := TEncoder.ComputeDCT(Length(data), data);
 end;
 
+procedure TChunk.ComputeFromInvDCT(const InvDCT: TDoubleDynArray);
+begin
+  srcData := TEncoder.ComputeInvDCT(Length(InvDCT), InvDCT);
+end;
+
 procedure TChunk.ComputeDstAttributes;
 var
   i: Integer;
@@ -255,7 +261,7 @@ var
 begin
   SetLength(dstData, length(srcData));
   for i := 0 to High(dstData) do
-    dstData[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(dstData) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative, frame.AttenuationLaw).AsInteger;
+    dstData[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(dstData) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative, frame.AttenuationLaw).AsInt;
 end;
 
 constructor TFrame.Create(enc: TEncoder; idx, startSmp, endSmp: Integer);
@@ -312,7 +318,7 @@ procedure TFrame.FindGain;
 var
   iGain, iChannel, iChunk, iSample, bestMul, atten, pos: Integer;
   best, v, fs, law: Double;
-  os: Integer;
+  os: SmallInt;
   tmp: TDoubleDynArray;
 begin
   SetLength(tmp, encoder.ChunkSize);
@@ -335,7 +341,7 @@ begin
 
         for iSample := 0 to encoder.ChunkSize - 1 do
         begin
-          os := TEncoder.makeOutputSample(tmp[iSample], encoder.ChunkBitDepth, atten, False, law).AsInteger;
+          os := TEncoder.makeOutputSample(tmp[iSample], encoder.ChunkBitDepth, atten, False, law).AsInt;
           fs := TEncoder.makeFloatSample(os, encoder.ChunkBitDepth, atten, False, law);
           v += sqr(tmp[iSample] - fs);
         end;
@@ -400,27 +406,21 @@ type
 
   TCountIndexList = specialize TFPGObjectList<TCountIndex>;
 
-function CompareCountIndexInv(const Item1, Item2: TCountIndex): Integer;
-begin
-  Result := CompareValue(Item2.Count, Item1.Count);
-end;
-
 function CompareChunkUseCountInv(const Item1, Item2: TChunk): Integer;
 begin
   Result := CompareValue(Item2.useCount, Item1.useCount);
+  if Result = 0 then
+    Result := CompareValue(Item1.index, Item2.index);
 end;
 
 procedure TFrame.Reduce;
 var
-  i, j, iSample, prec, colCount, clusterCount: Integer;
+  iChunk, prec, colCount, clusterCount: Integer;
   chunk: TChunk;
-  centroid: TDoubleDynArray;
   Clusters: TIntegerDynArray;
   Dataset: TKFloatArray2;
   Centroids: TKFloatArray2;
   Yakmo: TOrthogonalKmeans;
-  CIList: TCountIndexList;
-  CIInv: TIntegerDynArray;
 begin
   prec := encoder.Precision;
 
@@ -429,8 +429,8 @@ begin
 
   SetLength(Dataset, chunkRefs.Count);
 
-  for i := 0 to chunkRefs.Count - 1 do
-    Dataset[i] := chunkRefs[i].ComputeDCT;
+  for iChunk := 0 to chunkRefs.Count - 1 do
+    Dataset[iChunk] := chunkRefs[iChunk].ComputeDCT;
 
   if (prec > 0) and (chunkRefs.Count > clusterCount) then
   begin
@@ -441,7 +441,6 @@ begin
 
     SetLength(Clusters, chunkRefs.Count);
     SetLength(Centroids, clusterCount, colCount);
-    SetLength(centroid, colCount);
 
     if not encoder.PythonReduce then
     begin
@@ -463,55 +462,20 @@ begin
       SetLength(Centroids, clusterCount, colCount);
     end;
 
-    CIList := TCountIndexList.Create;
-    try
-      for i := 0 to clusterCount - 1 do
-      begin
-        CIList.Add(TCountIndex.Create);
-        CIList[i].Index := i;
+    reducedChunks.Clear;
+    reducedChunks.Capacity := clusterCount;
+    for iChunk := 0 to clusterCount - 1 do
+    begin
+      chunk := TChunk.Create(Self, iChunk, -1, nil);
+      reducedChunks.Add(chunk);
 
-        for iSample := 0 to encoder.ChunkSize - 1 do
-          centroid[iSample] := 0;
+      chunk.ComputeFromInvDCT(Centroids[iChunk]);
+      chunk.ComputeDstAttributes;
+      chunk.MakeDstData;
+  	end;
 
-        for j := 0 to High(Clusters) do
-          if Clusters[j] = i then
-          begin
-            chunk := chunkRefs[j];
-
-            for iSample := 0 to encoder.ChunkSize - 1 do
-              centroid[iSample] += TEncoder.makeOutputSample(chunk.srcData[IfThen(chunk.dstReversed, High(centroid) - iSample, iSample)], 2, 0, chunk.dstNegative, AttenuationLaw).AsDouble;
-
-            Inc(CIList[i].Count);
-          end;
-
-        for iSample := 0 to encoder.ChunkSize - 1 do
-          Centroids[i, iSample] := DivDef(centroid[iSample], CIList[i].Count, 0.0);
-      end;
-      CIList.Sort(@CompareCountIndexInv);
-      SetLength(CIInv, clusterCount);
-
-      reducedChunks.Clear;
-      reducedChunks.Capacity := clusterCount;
-      for i := 0 to clusterCount - 1 do
-      begin
-        chunk := TChunk.Create(Self, i, -1, nil);
-        reducedChunks.Add(chunk);
-
-        for iSample := 0 to encoder.chunkSize - 1 do
-          chunk.srcData[iSample] := Centroids[CIList[i].Index, iSample];
-
-        CIInv[CIList[i].Index] := i;
-
-        chunk.ComputeDstAttributes;
-        chunk.MakeDstData;
-  	  end;
-
-      for i := 0 to chunkRefs.Count - 1 do
-        chunkRefs[i].reducedChunk := reducedChunks[CIInv[Clusters[i]]];
-
-    finally
-      CIList.Free;
-    end;
+    for iChunk := 0 to chunkRefs.Count - 1 do
+      chunkRefs[iChunk].reducedChunk := reducedChunks[Clusters[iChunk]];
   end
   else
   begin
@@ -519,21 +483,21 @@ begin
 
     reducedChunks.Clear;
     reducedChunks.Capacity := chunkRefs.Count;
-    for i := 0 to reducedChunks.Capacity - 1 do
+    for iChunk := 0 to reducedChunks.Capacity - 1 do
     begin
-      chunk := TChunk.Create(Self, i, -1, nil);
+      chunk := TChunk.Create(Self, iChunk, -1, nil);
 
       reducedChunks.Add(chunk);
 
-      chunk.srcData := Copy(chunkRefs[i].srcData);
+      chunk.srcData := Copy(chunkRefs[iChunk].srcData);
       chunk.ComputeDstAttributes;
       chunk.MakeDstData;
     end;
 
     Centroids := Dataset;
 
-    for i := 0 to chunkRefs.Count - 1 do
-      chunkRefs[i].reducedChunk := reducedChunks[i];
+    for iChunk := 0 to chunkRefs.Count - 1 do
+      chunkRefs[iChunk].reducedChunk := reducedChunks[iChunk];
   end;
 end;
 
@@ -1278,7 +1242,7 @@ begin
   obd := (1 shl (OutBitDepth - 1)) - 1;
   smp16 := smp * obd * coeff;
   if Negative then smp16 := -smp16;
-  Result.AsInteger := EnsureRange(simpleRound(smp16), -obd, obd);
+  Result.AsInt := EnsureRange(simpleRound(smp16), -obd, obd);
   Result.AsDouble := EnsureRange(smp16, -obd, obd);
 end;
 
@@ -1494,8 +1458,8 @@ begin
     sf := smp / (1 shl (obd - 1)) / (1 * (1 + bs)) * IfThen(sgn, -1, 1);
 
     f := TEncoder.makeFloatSample(smp, obd, bs, sgn, 1 / 6);
-    o := TEncoder.makeOutputSample(f, obd, bs, sgn, 1 / 6).AsInteger;
-    so := TEncoder.makeOutputSample(sf, obd, bs, sgn, 1 / 6).AsInteger;
+    o := TEncoder.makeOutputSample(f, obd, bs, sgn, 1 / 6).AsInt;
+    so := TEncoder.makeOutputSample(sf, obd, bs, sgn, 1 / 6).AsInt;
     writeln(smp,#9,o,#9,so,#9,bs,#9,sgn,#9,FloatToStr(f));
     assert(smp = o);
     assert(smp = so);
