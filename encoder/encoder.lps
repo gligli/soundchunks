@@ -10,7 +10,7 @@
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
         <TopLine Value="193"/>
-        <CursorPos X="19" Y="237"/>
+        <CursorPos X="33" Y="242"/>
         <UsageCount Value="200"/>
         <Bookmarks Count="4">
           <Item0 X="3" Y="1260" ID="4"/>
@@ -19,7 +19,6 @@
           <Item3 Y="195" ID="1"/>
         </Bookmarks>
         <Loaded Value="True"/>
-        <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit0>
       <Unit1>
         <Filename Value="alglib\conv.pas"/>
@@ -46,7 +45,6 @@
         <CursorPos X="17" Y="181"/>
         <UsageCount Value="133"/>
         <Loaded Value="True"/>
-        <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit3>
       <Unit4>
         <Filename Value="mtpool.pas"/>
@@ -64,7 +62,6 @@
         <CursorPos X="18" Y="403"/>
         <UsageCount Value="84"/>
         <Loaded Value="True"/>
-        <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit5>
       <Unit6>
         <Filename Value="anysort.pas"/>
@@ -307,7 +304,6 @@
         <Item19 Value="..\lame_test\mstest.wav ..\ms.wav -v -fl500 -cpf256 -py"/>
         <Item20 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -fl1000"/>
       </List1>
-      <List2 Name="WorkingDirectory" Type="File" Count="1"/>
     </HistoryLists>
   </ProjectSession>
   <Debugging>

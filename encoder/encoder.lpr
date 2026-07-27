@@ -1117,7 +1117,7 @@ begin
   BitRate := -1;
   Precision := 1;
   LowCut := 0.0;
-  HighCut := 18000.0;
+  HighCut := 24000.0;
   ChunkBitDepth := 8;
   ChunkSize := 4;
   TrebleBoost := False;
@@ -1217,7 +1217,7 @@ end;
 
 class function TEncoder.simpleRound(smp: Double): Integer;
 begin
-  Result := Trunc(smp + 0.5);
+  Result := Trunc(smp + Sign(smp) * 0.5);
 end;
 
 class function TEncoder.make16BitSample(smp: Double): SmallInt;
