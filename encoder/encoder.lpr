@@ -73,7 +73,7 @@ type
     procedure FindGain;
     procedure MakeChunks;
     procedure Reduce;
-    procedure KNNFit;
+    procedure Reconstruct;
     procedure SaveStream(AStream: TStream);
     procedure MakeDstData;
 
@@ -85,6 +85,8 @@ type
   { TEncoder }
 
   TEncoder = class
+  const
+    cDCTDamping = 0.5;
   type
     TOutputSample = record
       AsInt: SmallInt;
@@ -372,7 +374,6 @@ begin
       chunk.channel := iChannel;
       chunk.ComputeDstAttributes;
       chunk.MakeDstData;
-      chunk.ComputeDCT;
       finalChunks.Add(chunk);
       chunkRefs.Add(chunk);
     end;
@@ -486,7 +487,6 @@ begin
     for iChunk := 0 to reducedChunks.Capacity - 1 do
     begin
       chunk := TChunk.Create(Self, iChunk, -1, nil);
-
       reducedChunks.Add(chunk);
 
       chunk.srcData := Copy(chunkRefs[iChunk].srcData);
@@ -501,20 +501,23 @@ begin
   end;
 end;
 
-procedure TFrame.KNNFit;
+procedure TFrame.Reconstruct;
+const
+  cKnnK = 256;
 var
-  iChunk, iSample, iSampleCribble, iChannel, dsIdx, bestIdx, iteration: Integer;
-  err: TANNFloat;
-  corr, curTruthAcc, curLossyAcc, bestErr, skew: Double;
+  iK, iChunk, iSample, iChannel, dsIdx, bestIdx, idx, knnK: Integer;
+  err, offsetErr, bestErr, curTruthAcc, curLossyAcc: Double;
   truthAcc, lossyAcc: TDoubleDynArray;
   DCTDataset, PlainDataset: TANNFloatDynArray2;
-  query: TANNFloatDynArray;
+  queryDCT: TANNFloatDynArray;
   KDT: PANNkdtree;
   chunk: TChunk;
+
+  idxs: array[0 .. cKnnK - 1] of Integer;
+  errs: array[0 .. cKnnK - 1] of TANNFloat;
 begin
   SetLength(PlainDataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, encoder.chunkSize);
   SetLength(DCTDataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed});
-  SetLength(query, encoder.chunkSize);
 
   SetLength(truthAcc, encoder.ChannelCount);
   SetLength(lossyAcc, encoder.ChannelCount);
@@ -544,88 +547,59 @@ begin
     Inc(dsIdx, 4);
   end;
 
+  knnK := min(cKnnK, dsIdx);
+
   KDT := ann_kdtree_create(PPANNFloat(@DCTDataset[0]), Length(DCTDataset), encoder.ChunkSize, 1, ANN_KD_STD);
   try
     for iChunk := 0 to chunkRefs.Count - 1 do
     begin
       chunk := chunkRefs[iChunk];
 
-      corr := 1.0;
-      curTruthAcc := truthAcc[chunk.channel];
-      curLossyAcc := lossyAcc[chunk.channel];
+      // DCT
+      queryDCT := TEncoder.ComputeDCT(encoder.ChunkSize, chunk.srcData);
 
-      iteration := 0;
-      repeat
+      // query
+      ann_kdtree_pri_search_multi(KDT, @idxs[0], @errs[0], knnK, @queryDCT[0], 0.0);
 
-        bestIdx := -1;
-        bestErr := Infinity;
-        for iSampleCribble := 0 to encoder.ChunkSize - 1 do
-        begin
-          // cumulate
-          for iSample := 0 to encoder.ChunkSize - 1 do
-          begin
-            query[iSample] := chunk.srcData[iSample];
+      bestErr := Infinity;
+      bestIdx := -1;
+      for iK := 0 to knnK - 1 do
+      begin
+        idx := idxs[iK];
+        err := errs[iK];
 
-            if iSample = 0 then
-              query[iSample] += curTruthAcc
-            else
-              query[iSample] += query[iSample - 1];
-
-            // also apply skew removal
-            if iSample = iSampleCribble then
-              query[iSampleCribble] -= curLossyAcc - curTruthAcc;
-          end;
-
-          // clamp
-          for iSample := 0 to encoder.ChunkSize - 1 do
-            query[iSample] := EnsureRange(query[iSample], -corr, corr);
-
-          // decumulate
-          for iSample := encoder.ChunkSize - 1 downto 1 do
-            query[iSample] -= query[iSample - 1];
-          query[0] -= curTruthAcc;
-
-          // DCT
-          query := TEncoder.ComputeDCT(encoder.ChunkSize, query);
-
-          // query
-          dsIdx := ann_kdtree_search(KDT, @query[0], 0.0, @err);
-
-          if err < bestErr then
-          begin
-            bestIdx := dsIdx;
-            bestErr := err;
-          end;
-        end;
-
-        chunk.dstNegative := bestIdx and 1 <> 0;
-        chunk.dstReversed := bestIdx and 2 <> 0;
-        chunk.reducedChunk := reducedChunks[bestIdx shr 2];
-
-        skew := (iteration shr 1) / (1 shl encoder.ChunkBitDepth) * (1.0 - 2.0 * (iteration and 1));
-        corr := 1.0;
         curTruthAcc := truthAcc[chunk.channel];
         curLossyAcc := lossyAcc[chunk.channel];
+
         for iSample := 0 to encoder.ChunkSize - 1 do
         begin
           curTruthAcc += chunk.srcData[iSample];
-          curLossyAcc += PlainDataset[bestIdx, iSample];
-
-          if Abs(curLossyAcc) >= 1.0 then
-            corr := min(corr, 2.0 - Abs(curLossyAcc) - skew);
+          curLossyAcc += PlainDataset[idx, iSample];
         end;
 
-        //if iteration >= 0 then
-        //  WriteLn(index:8,iChunk:8,bestIdx:8,iteration:8,corrLo:12:6,corrHi:12:6);
+        offsetErr := Sqr(curLossyAcc - curTruthAcc);
 
-        Inc(iteration);
+        if offsetErr < bestErr then
+        begin
+          bestErr := offsetErr;
+          bestIdx := idx;
+        end;
 
-      until corr = 1.0;
+        if not SameValue(err, errs[0], sqr(0.5 / High(SmallInt)) * encoder.ChunkSize) then
+          Break;
+      end;
+
+      chunk.dstNegative := bestIdx and 1 <> 0;
+      chunk.dstReversed := bestIdx and 2 <> 0;
+      chunk.reducedChunk := reducedChunks[bestIdx shr 2];
 
       Inc(chunk.reducedChunk.useCount);
 
-      truthAcc[chunk.channel] := curTruthAcc;
-      lossyAcc[chunk.channel] := curLossyAcc;
+      for iSample := 0 to encoder.ChunkSize - 1 do
+      begin
+        truthAcc[chunk.channel] += chunk.srcData[iSample];
+        lossyAcc[chunk.channel] += PlainDataset[bestIdx, iSample];
+      end;
     end;
   finally
     ann_kdtree_destroy(KDT);
@@ -709,7 +683,7 @@ begin
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
   begin
-    w := TEncoder.make16BitSample(srcFirstSample[iChannel]);
+    w := Word(TEncoder.make16BitSample(srcFirstSample[iChannel]));
     AStream.WriteWord(w and $ffff);
   end;
 
@@ -1052,7 +1026,7 @@ begin
 
   FrameCount := frames.Count;
 
-  ThreadsPerFrame := max(1, ThreadsPerFrame div FrameCount);
+  ThreadsPerFrame := max(1, (ThreadsPerFrame - 1) div FrameCount + 1);
 end;
 
 procedure TEncoder.MakeFrames;
@@ -1066,7 +1040,8 @@ procedure TEncoder.MakeFrames;
     frm.FindGain;
     frm.MakeChunks;
     frm.Reduce;
-    frm.KNNFit;
+    Write('.');
+    frm.Reconstruct;
     frm.MakeDstData;
     Write('.');
   end;
@@ -1295,7 +1270,7 @@ begin
     for n := 0 to chunkSz - 1 do
       sum += s * samples[n] * cos(pi / chunkSz * (n + 0.5) * k);
 
-    Result[k] := sum * sqrt (2.0 / chunkSz);
+    Result[k] := sum * sqrt (2.0 / chunkSz) / (k + cDCTDamping);
   end;
 end;
 
@@ -1307,11 +1282,11 @@ begin
   SetLength(Result, length(dct));
   for k := 0 to chunkSz - 1 do
   begin
-    sum := sqrt(0.5) * dct[0];
+    sum := sqrt(0.5) * dct[0] * (0 + cDCTDamping);
     for n := 1 to chunkSz - 1 do
-      sum += dct[n] * cos (pi / chunkSz * (k + 0.5) * n);
+      sum += dct[n] * (n + cDCTDamping) * cos (pi / chunkSz * (k + 0.5) * n);
 
-    Result[k] := sum * sqrt (2.0 / chunkSz);
+    Result[k] := sum * sqrt(2.0 / chunkSz);
   end;
 end;
 
