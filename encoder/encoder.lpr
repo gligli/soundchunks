@@ -131,9 +131,8 @@ type
     class function makeFloatSample(smp: SmallInt): Double;
     class function makeFloatSample(smp: SmallInt; OutBitDepth, Attenuation: Integer; Negative: Boolean; Law: Double): Double;
     class function ComputeAttenuation(chunkSz: Integer; const samples: TDoubleDynArray; Law: Double): Integer;
-    class function ComputeDCT(chunkSz: Integer; const samples: TDoubleDynArray): TDoubleDynArray;
-    class function ComputeInvDCT(chunkSz: Integer; const dct: TDoubleDynArray): TDoubleDynArray;
-    class function ComputeDCT4(chunkSz: Integer; const samples: TDoubleDynArray): TDoubleDynArray;
+    class procedure ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
+    class procedure ComputeInvDCT(chunkSz: Integer; dct, samples: PDouble);
     class function CompareEuclidean(const dctA, dctB: TANNFloatDynArray): TANNFloat; overload;
     class function CompareEuclidean(const dctA, dctB: TDoubleDynArray): Double; overload;
     class function CompareEuclidean(const dctA, dctB: TSmallIntDynArray): Double; overload;
@@ -215,12 +214,14 @@ begin
   SetLength(data, Length(srcData));
   for iSample := 0 to High(data) do
     data[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(data) - iSample, iSample)], 2, 0, dstNegative, frame.AttenuationLaw).AsDouble;
-  Result := TEncoder.ComputeDCT(Length(data), data);
+
+  SetLength(Result, Length(srcData));
+  TEncoder.ComputeDCT(Length(data), @data[0], @Result[0]);
 end;
 
 procedure TChunk.ComputeFromInvDCT(const InvDCT: TDoubleDynArray);
 begin
-  srcData := TEncoder.ComputeInvDCT(Length(InvDCT), InvDCT);
+  TEncoder.ComputeInvDCT(Length(InvDCT), @InvDCT[0], @srcData[0]);
 end;
 
 procedure TChunk.ComputeDstAttributes;
@@ -508,7 +509,7 @@ var
   iK, iChunk, iSample, iChannel, dsIdx, bestIdx, idx, knnK: Integer;
   err, offsetErr, bestErr, curTruthAcc, curLossyAcc: Double;
   truthAcc, lossyAcc: TDoubleDynArray;
-  DCTDataset, PlainDataset: TANNFloatDynArray2;
+  Dataset: TANNFloatDynArray2;
   queryDCT: TANNFloatDynArray;
   KDT: PANNkdtree;
   chunk: TChunk;
@@ -516,9 +517,9 @@ var
   idxs: array[0 .. cKnnK - 1] of Integer;
   errs: array[0 .. cKnnK - 1] of TANNFloat;
 begin
-  SetLength(PlainDataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, encoder.chunkSize);
-  SetLength(DCTDataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed});
+  SetLength(Dataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, encoder.chunkSize * 2);
 
+  SetLength(queryDCT, encoder.chunkSize);
   SetLength(truthAcc, encoder.ChannelCount);
   SetLength(lossyAcc, encoder.ChannelCount);
   for iChannel := 0 to encoder.ChannelCount - 1 do
@@ -534,29 +535,30 @@ begin
 
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
-      PlainDataset[dsIdx + 0, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, False, AttenuationLaw);
-      PlainDataset[dsIdx + 1, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, True, AttenuationLaw);
-      PlainDataset[dsIdx + 2, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, False, AttenuationLaw);
-      PlainDataset[dsIdx + 3, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, True, AttenuationLaw);
+      Dataset[dsIdx + 0, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, False, AttenuationLaw);
+      Dataset[dsIdx + 1, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, True, AttenuationLaw);
+      Dataset[dsIdx + 2, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, False, AttenuationLaw);
+      Dataset[dsIdx + 3, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, chunk.dstAttenuation, True, AttenuationLaw);
     end;
 
-    DCTDataset[dsIdx + 0] := TEncoder.ComputeDCT(encoder.ChunkSize, PlainDataset[dsIdx + 0]);
-    DCTDataset[dsIdx + 1] := TEncoder.ComputeDCT(encoder.ChunkSize, PlainDataset[dsIdx + 1]);
-    DCTDataset[dsIdx + 2] := TEncoder.ComputeDCT(encoder.ChunkSize, PlainDataset[dsIdx + 2]);
-    DCTDataset[dsIdx + 3] := TEncoder.ComputeDCT(encoder.ChunkSize, PlainDataset[dsIdx + 3]);
+    TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx + 0, encoder.chunkSize], @Dataset[dsIdx + 0, 0]);
+    TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx + 1, encoder.chunkSize], @Dataset[dsIdx + 1, 0]);
+    TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx + 2, encoder.chunkSize], @Dataset[dsIdx + 2, 0]);
+    TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx + 3, encoder.chunkSize], @Dataset[dsIdx + 3, 0]);
+
     Inc(dsIdx, 4);
   end;
 
-  knnK := min(cKnnK, dsIdx);
+  knnK := min(cKnnK, Length(Dataset));
 
-  KDT := ann_kdtree_create(PPANNFloat(@DCTDataset[0]), Length(DCTDataset), encoder.ChunkSize, 1, ANN_KD_STD);
+  KDT := ann_kdtree_create(PPANNFloat(@Dataset[0]), Length(Dataset), encoder.ChunkSize, 1, ANN_KD_STD);
   try
     for iChunk := 0 to chunkRefs.Count - 1 do
     begin
       chunk := chunkRefs[iChunk];
 
       // DCT
-      queryDCT := TEncoder.ComputeDCT(encoder.ChunkSize, chunk.srcData);
+      TEncoder.ComputeDCT(encoder.ChunkSize, @chunk.srcData[0], @queryDCT[0]);
 
       // query
       ann_kdtree_pri_search_multi(KDT, @idxs[0], @errs[0], knnK, @queryDCT[0], 0.0);
@@ -574,7 +576,7 @@ begin
         for iSample := 0 to encoder.ChunkSize - 1 do
         begin
           curTruthAcc += chunk.srcData[iSample];
-          curLossyAcc += PlainDataset[idx, iSample];
+          curLossyAcc += Dataset[idx, encoder.ChunkSize + iSample];
         end;
 
         offsetErr := Sqr(curLossyAcc - curTruthAcc);
@@ -598,7 +600,7 @@ begin
       for iSample := 0 to encoder.ChunkSize - 1 do
       begin
         truthAcc[chunk.channel] += chunk.srcData[iSample];
-        lossyAcc[chunk.channel] += PlainDataset[bestIdx, iSample];
+        lossyAcc[chunk.channel] += Dataset[bestIdx, encoder.ChunkSize + iSample];
       end;
     end;
   finally
@@ -1256,12 +1258,11 @@ begin
   Dec(Result);
 end;
 
-class function TEncoder.ComputeDCT(chunkSz: Integer; const samples: TDoubleDynArray): TDoubleDynArray;
+class procedure TEncoder.ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
 var
   k, n: Integer;
   sum, s: Double;
 begin
-  SetLength(Result, length(samples));
   for k := 0 to chunkSz - 1 do
   begin
     s := ifthen(k = 0, sqrt(0.5), 1.0);
@@ -1270,39 +1271,24 @@ begin
     for n := 0 to chunkSz - 1 do
       sum += s * samples[n] * cos(pi / chunkSz * (n + 0.5) * k);
 
-    Result[k] := sum * sqrt (2.0 / chunkSz) / (k + cDCTDamping);
+    dct^ := sum * sqrt (2.0 / chunkSz) / (k + cDCTDamping);
+    Inc(dct);
   end;
 end;
 
-class function TEncoder.ComputeInvDCT(chunkSz: Integer; const dct: TDoubleDynArray): TDoubleDynArray;
+class procedure TEncoder.ComputeInvDCT(chunkSz: Integer; dct, samples: PDouble);
 var
   k, n: Integer;
   sum: Double;
 begin
-  SetLength(Result, length(dct));
   for k := 0 to chunkSz - 1 do
   begin
     sum := sqrt(0.5) * dct[0] * (0 + cDCTDamping);
     for n := 1 to chunkSz - 1 do
       sum += dct[n] * (n + cDCTDamping) * cos (pi / chunkSz * (k + 0.5) * n);
 
-    Result[k] := sum * sqrt(2.0 / chunkSz);
-  end;
-end;
-
-class function TEncoder.ComputeDCT4(chunkSz: Integer; const samples: TDoubleDynArray): TDoubleDynArray;
-var
-  k, n: Integer;
-  sum: Double;
-begin
-  SetLength(Result, length(samples));
-  for k := 0 to chunkSz - 1 do
-  begin
-    sum := 0;
-    for n := 0 to chunkSz - 1 do
-      sum += samples[n] * cos(pi / chunkSz * (n + 0.5) * (k + 0.5));
-
-    Result[k] := sum * sqrt (2.0 / chunkSz);
+    samples^ := sum * sqrt(2.0 / chunkSz);
+    Inc(samples);
   end;
 end;
 
