@@ -9,6 +9,7 @@ const
   CAttenuationLawNumerator = 1;
   CVariableCodingHeaderSize = 2;
   CVariableCodingBlockSize = 3;
+  CPiggyMaxCodingCount = 4;
 
 var
   GAttenuationLookup : array[0 .. CMaxAttenuation] of Integer;
@@ -37,7 +38,7 @@ var
 
   procedure GSCUnpack(ASourceStream, ADestStream: TStream);
   var
-    iChunk, iAttenuation, iSample, iChannel, b, s1, s2, bitCount, variableCodingHeader, delta, finalSample, clippingErrors: Integer;
+    iChunk, iAttenuation, iSample, iChannel, iVariableCoding, b, s1, s2, bitCount, variableCodingHeader, delta, finalSample, clippingErrors: Integer;
     w: Word;
     channelSample: TIntegerDynArray;
     chunkIndex: TIntegerDynArray;
@@ -46,6 +47,7 @@ var
     FrameLength, SampleRate, ChunkBlend, AttenuationDivider: Integer;
     Chunks: TSmallIntDynArray2;
     Attenuations: TByteDynArray;
+    piggyCodingBits: array[0 .. CPiggyMaxCodingCount - 1] of Byte;
     memStream: TMemoryStream;
     law, lawAcc: Double;
     bits: Cardinal;
@@ -176,10 +178,13 @@ var
 
         FrameLength := ASourceStream.ReadDWord;
 
-
         if StreamVersion > 1 then
           for iChannel := 0 to ChannelCount - 1 do
             channelSample[iChannel] := SmallInt(ASourceStream.ReadWord);
+
+        if StreamVersion > 2 then
+          for iVariableCoding := 0 to CPiggyMaxCodingCount - 1 do
+            piggyCodingBits[iVariableCoding] := ASourceStream.ReadByte;
 
         bits := 0;
         bitCount := 0;
@@ -201,8 +206,17 @@ var
             FillBits;
 
             chunkIndex[iChannel] := 0;
-            for iSample := 0 to variableCodingHeader do
-              chunkIndex[iChannel] := (chunkIndex[iChannel] shl CVariableCodingBlockSize) or GetBits(CVariableCodingBlockSize);
+            if StreamVersion > 2 then
+            begin
+              for iVariableCoding := 0 to variableCodingHeader - 1 do
+                chunkIndex[iChannel] += 1 shl piggyCodingBits[iVariableCoding];
+              chunkIndex[iChannel] += GetBits(piggyCodingBits[variableCodingHeader]);
+            end
+            else
+            begin
+              for iVariableCoding := 0 to variableCodingHeader do
+                chunkIndex[iChannel] := (chunkIndex[iChannel] shl CVariableCodingBlockSize) or GetBits(CVariableCodingBlockSize);
+            end;
           end;
 
           for iSample := 0 to ChunkSize - 1 do

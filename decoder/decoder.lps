@@ -9,9 +9,9 @@
         <Filename Value="decoder.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="184"/>
-        <CursorPos X="26" Y="222"/>
-        <UsageCount Value="42"/>
+        <TopLine Value="34"/>
+        <CursorPos X="24" Y="65"/>
+        <UsageCount Value="44"/>
         <Loaded Value="True"/>
       </Unit>
       <Unit>
@@ -19,7 +19,7 @@
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="1"/>
         <CursorPos X="40" Y="16"/>
-        <UsageCount Value="42"/>
+        <UsageCount Value="44"/>
         <Loaded Value="True"/>
       </Unit>
       <Unit>
@@ -30,90 +30,6 @@
       </Unit>
     </Units>
     <JumpHistory HistoryIndex="29">
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="39" Column="11" TopLine="12"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="93" Column="39" TopLine="70"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="134" Column="20" TopLine="118"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="39" Column="34" TopLine="12"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="194" Column="24" TopLine="163"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="39" Column="105" TopLine="12"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="198" Column="33" TopLine="159"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="111" Column="25" TopLine="84"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="112" Column="31" TopLine="85"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="204" TopLine="150"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="213" TopLine="174"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="235" TopLine="195"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="212" Column="36" TopLine="186"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="218" Column="23" TopLine="186"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="178" TopLine="162"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="214" TopLine="168"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="179" Column="58" TopLine="141"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="214" Column="73" TopLine="188"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="219" Column="49" TopLine="188"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="97" Column="14" TopLine="70"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="13" Column="30"/>
-      </Position>
       <Position>
         <Filename Value="decoder.lpr"/>
         <Caret Line="102" TopLine="70"/>
@@ -150,13 +66,97 @@
         <Filename Value="decoder.lpr"/>
         <Caret Line="72" Column="70" TopLine="43"/>
       </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="199" Column="15" TopLine="169"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="178" Column="15" TopLine="22"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="10" Column="3"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="11" Column="3"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="50" TopLine="6"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="12" Column="23"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="50" Column="20"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="41" Column="61" TopLine="16"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="186" TopLine="157"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="187" TopLine="157"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="186" TopLine="157"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="187" TopLine="157"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="186" TopLine="157"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="187" TopLine="157"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="186" TopLine="157"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="187" TopLine="157"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="186" TopLine="157"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="211" TopLine="181"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="213" TopLine="181"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="194" TopLine="181"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="196" TopLine="181"/>
+      </Position>
     </JumpHistory>
     <RunParams>
       <FormatVersion Value="2"/>
       <Modes ActiveMode="default">
         <Mode Name="default">
           <local>
-            <CommandLineParams Value="..\out1.gsc ..\out1dec.wav"/>
+            <CommandLineParams Value="..\out3.gsc ..\out3dec.wav"/>
             <LaunchingApplication PathPlusParams="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
           </local>
         </Mode>
@@ -166,17 +166,19 @@
       <List Name="LaunchingApplication" Type="File" Count="1">
         <Item1 Value="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
       </List>
-      <List Name="CommandLineParameters" Count="9">
-        <Item1 Value="..\out1.gsc ..\out1dec.wav"/>
-        <Item2 Value="..\out1.gsc ..\out1dec.gsc"/>
-        <Item3 Value="..\out1___.gsc"/>
-        <Item4 Value="..\fr025.gsc ..\fr025__.wav"/>
-        <Item5 Value="..\out1___.wav"/>
-        <Item6 Value="..\ms.gsc"/>
-        <Item7 Value="..\out1.gsc"/>
-        <Item8 Value="..\mo.gsc"/>
-        <Item9 Value="..\mo2.gsc"/>
+      <List Name="CommandLineParameters" Count="10">
+        <Item1 Value="..\out3.gsc ..\out3dec.wav"/>
+        <Item2 Value="..\out1.gsc ..\out1dec.wav"/>
+        <Item3 Value="..\out1.gsc ..\out1dec.gsc"/>
+        <Item4 Value="..\out1___.gsc"/>
+        <Item5 Value="..\fr025.gsc ..\fr025__.wav"/>
+        <Item6 Value="..\out1___.wav"/>
+        <Item7 Value="..\ms.gsc"/>
+        <Item8 Value="..\out1.gsc"/>
+        <Item9 Value="..\mo.gsc"/>
+        <Item10 Value="..\mo2.gsc"/>
       </List>
+      <List Name="WorkingDirectory" Type="File" Count="1"/>
     </HistoryLists>
   </ProjectSession>
   <Debugging>
