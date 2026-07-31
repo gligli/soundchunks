@@ -1030,7 +1030,7 @@ var
   j, i, k, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
   fixedCost, chunksCost, indexingCost: Double;
-  avgPower, totalPower, perFramePower, curPower, smp: Int64;
+  avgPower, totalPower, perFramePower, curPower, smp: Double;
 begin
   // pass 1
 
@@ -1094,8 +1094,8 @@ begin
   avgPower := 0;
   for j := 0 to ChannelCount - 1 do
     for i := 0 to SampleCount - 1 do
-      avgPower += Abs(srcData[j, i]);
-  avgPower := avgPower div (SampleCount * ChannelCount);
+      avgPower += Sqr(srcData[j, i]);
+  avgPower := Sqrt(avgPower / (SampleCount * ChannelCount));
 
   totalPower := 0;
   for i := 0 to SampleCount - 1 do
@@ -1108,7 +1108,7 @@ begin
     totalPower += Round(lerp(avgPower, smp, VariableFrameSizeRatio));
   end;
 
-  perFramePower := totalPower div FrameCount;
+  perFramePower := totalPower / FrameCount;
 
   if Verbose then
   begin
