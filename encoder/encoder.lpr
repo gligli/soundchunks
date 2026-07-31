@@ -133,9 +133,8 @@ type
     class function ComputeAttenuation(chunkSz: Integer; const samples: TDoubleDynArray; Law: Double): Integer;
     class procedure ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
     class procedure ComputeInvDCT(chunkSz: Integer; dct, samples: PDouble);
-    class function CompareEuclidean(const dctA, dctB: TANNFloatDynArray): TANNFloat; overload;
     class function CompareEuclidean(const dctA, dctB: TDoubleDynArray): Double; overload;
-    class function CompareEuclidean(const dctA, dctB: TSmallIntDynArray): Double; overload;
+    class function CompareManhattan(const dctA, dctB: TDoubleDynArray): Double;
     class function ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): Double;
     class procedure createWAV(channels: word; resolution: word; rate: longint; fn: string; const data: TSmallIntDynArray);
 
@@ -647,7 +646,6 @@ begin
 
   if Odd(cl.Count) then
     AStream.WriteByte(cl[cl.Count - 1].dstAttenuation shl 4);
-
 
   case encoder.ChunkBitDepth of
     8:
@@ -1292,19 +1290,6 @@ begin
   end;
 end;
 
-class function TEncoder.CompareEuclidean(const dctA, dctB: TANNFloatDynArray): TANNFloat;
-var
-  i: Integer;
-begin
-  Assert(Length(dctA) = Length(dctB));
-  Result := 0.0;
-
-  for i := 0 to High(dctA) do
-    Result += sqr(dctA[i] - dctB[i]);
-
-  Result := sqrt(Result / Length(dctA));
-end;
-
 class function TEncoder.CompareEuclidean(const dctA, dctB: TDoubleDynArray): Double;
 var
   i: Integer;
@@ -1318,7 +1303,7 @@ begin
   Result := sqrt(Result / Length(dctA));
 end;
 
-class function TEncoder.CompareEuclidean(const dctA, dctB: TSmallIntDynArray): Double;
+class function TEncoder.CompareManhattan(const dctA, dctB: TDoubleDynArray): Double;
 var
   i: Integer;
 begin
@@ -1326,9 +1311,9 @@ begin
   Result := 0.0;
 
   for i := 0 to High(dctA) do
-    Result += sqr((dctA[i] - dctB[i]) / High(SmallInt));
+    Result += Abs(dctA[i] - dctB[i]);
 
-  Result := sqrt(Result / Length(dctA));
+  Result := Result / Length(dctA);
 end;
 
 function TEncoder.ComputeEAQUAL(chunkSz: Integer; UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
@@ -1369,7 +1354,7 @@ begin
       rt[j * Length(smpRef[0]) + i] := smpTst[j, i];
     end;
 
-  Result := CompareEuclidean(rr, rt);
+  Result := CompareManhattan(rr, rt);
 end;
 
 class procedure TEncoder.createWAV(channels: word; resolution: word; rate: longint; fn: string; const data: TSmallIntDynArray);
