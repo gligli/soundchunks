@@ -8,8 +8,6 @@ uses
 
 const
   CStreamVersion = 2;
-  CVariableCodingHeaderSize = 2;
-  CVariableCodingBlockSize = 3;
   CMaxAttenuation = 15;
   CMaxChunksPerFrame = 4096;
   CAttenuationLawNumerator = 1;
@@ -18,6 +16,27 @@ type
   TEncoder = class;
   TFrame = class;
   TChunk = class;
+
+  { TPiggyCoder }
+
+  TPiggyCoder = class
+  const
+    CMaxCodingCount = 4;
+  private
+    codingBits: array[0 .. CMaxCodingCount - 1] of Byte;
+    highestCode: Integer;
+    codes: TWordDynArray;
+    codesBitCount: Byte;
+    extraBits: TByteDynArray;
+    extraBitCount: Byte;
+
+    procedure InternalRender(const ACodingBits: array of Byte; AStream: TStream);
+  public
+    constructor Create(const ACodes: TWordDynArray; AHighestCode, AExtraBitCount: Integer; const AExtraBits: TByteDynArray);
+
+    procedure SolveCodingBits;
+    procedure Render(AStream: TStream);
+  end;
 
   { TChunk }
 
@@ -188,6 +207,143 @@ begin
   if idx < 0 then
     Exit(def);
   Result := StrToFloatDef(copy(ParamStr(idx), Length(p) + 1), def);
+end;
+
+{ TPiggyCoder }
+
+constructor TPiggyCoder.Create(const ACodes: TWordDynArray; AHighestCode, AExtraBitCount: Integer; const AExtraBits: TByteDynArray);
+var
+  iCodingBits: Integer;
+  bitBlock, valuesCoded: Integer;
+begin
+  codes := ACodes;
+  extraBits := AExtraBits;
+  extraBitCount := AExtraBitCount;
+  highestCode := AHighestCode;
+  codesBitCount := Ceil(Log2(highestCode + 1));
+
+  bitBlock := codesBitCount div CMaxCodingCount;
+  valuesCoded := 0;
+  for iCodingBits := 0 to CMaxCodingCount - 1 do
+  begin
+    valuesCoded += 1 shl (bitBlock * (iCodingBits + 1));
+    codingBits[iCodingBits] := Ceil(Log2(valuesCoded));
+  end;
+end;
+
+procedure TPiggyCoder.SolveCodingBits;
+var
+  iCB0, iCB1, iCB2, iCB3, iCodingBits, bestSize, valuesCoded: Integer;
+  locCodingBits: array[0 .. CMaxCodingCount - 1] of Byte;
+  ms: TMemoryStream;
+begin
+  ms := TMemoryStream.Create;
+  try
+    bestSize := High(Integer);
+
+    for iCB0 := 1 to codesBitCount do
+      for iCB1 := iCB0 to codesBitCount do
+        for iCB2 := iCB1 to codesBitCount do
+          for iCB3 := iCB2 to codesBitCount do
+          begin
+            ms.Position := 0;
+
+            locCodingBits[0] := iCB0; locCodingBits[1] := iCB1; locCodingBits[2] := iCB2; locCodingBits[3] := iCB3;
+
+            valuesCoded := 0;
+            for iCodingBits := 0 to CMaxCodingCount - 1 do
+              valuesCoded += 1 shl locCodingBits[iCodingBits];
+
+            if valuesCoded < highestCode then
+              Continue;
+
+            InternalRender(locCodingBits, ms);
+
+            if ms.Position < bestSize then
+            begin
+              bestSize := ms.Position;
+              codingBits := locCodingBits;
+            end;
+          end;
+
+  finally
+    ms.Free;
+  end;
+end;
+
+procedure TPiggyCoder.Render(AStream: TStream);
+begin
+  InternalRender(codingBits, AStream);
+end;
+
+procedure TPiggyCoder.InternalRender(const ACodingBits: array of Byte; AStream: TStream);
+var
+  iCode, iCodingBits, itemBitCnt, overallBitCnt, codeValue, codeBitsLimit, prevCodingBits: Integer;
+  itemBits, overallBits: UInt64;
+begin
+  overallBits := 0;
+  overallBitCnt := 0;
+
+  prevCodingBits := -1;
+  for iCode := 0 to High(codes) do
+  begin
+    itemBits := 0;
+    itemBitCnt := 0;
+
+    if extraBitCount > 0 then
+    begin
+      itemBits := itemBits or (extraBits[iCode] shl itemBitCnt);
+      itemBitCnt += extraBitCount;
+    end;
+
+    codeValue := codes[iCode];
+    for iCodingBits := 0 to CMaxCodingCount - 1 do
+    begin
+      codeBitsLimit := 1 shl ACodingBits[iCodingBits];
+
+      if codeValue < codeBitsLimit then
+      begin
+        if iCodingBits = prevCodingBits then
+        begin
+          itemBits := itemBits or (0 shl itemBitCnt);
+          itemBitCnt += 1;
+        end
+        else
+        begin
+          itemBits := itemBits or (1 shl itemBitCnt);
+          itemBitCnt += 1;
+
+          itemBits := itemBits or (iCodingBits shl itemBitCnt);
+          itemBitCnt += 2;
+
+          prevCodingBits := iCodingBits;
+        end;
+
+        itemBits := itemBits or (codeValue shl itemBitCnt);
+        itemBitCnt += ACodingBits[iCodingBits];
+
+        Break;
+      end;
+
+      codeValue -= codeBitsLimit;
+    end;
+
+    overallBits := overallBits or (itemBits shl overallBitCnt);
+    overallBitCnt += itemBitCnt;
+    while overallBitCnt >= 16 do
+    begin
+      overallBitCnt -= 16;
+      AStream.WriteWord(overallBits and $ffff);
+      overallBits := overallBits shr 16;
+    end;
+  end;
+
+  if overallBitCnt > 0 then
+  begin
+    Assert(overallBitCnt <= 16);
+    AStream.WriteWord(overallBits and $ffff);
+    overallBits := overallBits shr 16;
+  end;
 end;
 
 { TChunk }
@@ -618,9 +774,12 @@ end;
 
 procedure TFrame.SaveStream(AStream: TStream);
 var
-  iChunk, iSample, iChannel, s1, s2, vcbsCnt, prevVcbsCnt, codeSize, bitCnt: Integer;
-  code, w, bits: UInt64;
+  iChunk, iSample, iChannel, s1, s2: Integer;
+  w: UInt64;
   cl: TChunkList;
+  piggyCoder: TPiggyCoder;
+  piggyCodes: TWordDynArray;
+  piggyExtraBits: TByteDynArray;
 begin
   Assert(reducedChunks.Count <= CMaxChunksPerFrame);
 
@@ -687,61 +846,20 @@ begin
     AStream.WriteWord(w and $ffff);
   end;
 
-  bitCnt := 0;
-  bits := 0;
+  SetLength(piggyCodes, cl.Count);
+  SetLength(piggyExtraBits, cl.Count);
   for iChunk := 0 to cl.Count - 1 do
   begin
-    vcbsCnt := IfThen(cl[iChunk].reducedChunk.index = 0, 0, BsrWord(cl[iChunk].reducedChunk.index) div CVariableCodingBlockSize);
-
-    //writeln(cl[iChunk].reducedChunk.index:5,vcbsCnt:3);
-
-    prevVcbsCnt := -1;
-    if iChunk >= 1 then
-      prevVcbsCnt := IfThen(cl[iChunk - 1].reducedChunk.index = 0, 0, BsrWord(cl[iChunk - 1].reducedChunk.index) div CVariableCodingBlockSize);
-
-    code := 0;
-    codeSize := 0;
-
-    code := code or (Ord(cl[iChunk].dstNegative) shl codeSize);
-    codeSize += 1;
-
-    code := code or (Ord(cl[iChunk].dstReversed) shl codeSize);
-    codeSize += 1;
-
-    if vcbsCnt = prevVcbsCnt then
-    begin
-      code := code or (0 shl codeSize);
-      codeSize += 1;
-    end
-    else
-    begin
-      code := code or (1 shl codeSize);
-      codeSize += 1;
-      code := code or (vcbsCnt shl codeSize);
-      codeSize += CVariableCodingHeaderSize;
-    end;
-
-    for iSample := vcbsCnt downto 0 do
-    begin
-      code := code or (((cl[iChunk].reducedChunk.index shr (iSample * CVariableCodingBlockSize)) and ((1 shl CVariableCodingBlockSize) - 1)) shl codeSize);
-      codeSize += CVariableCodingBlockSize;
-    end;
-
-    bits := bits or (code shl bitCnt);
-    bitCnt += codeSize;
-    while bitCnt >= 16 do
-    begin
-      bitCnt -= 16;
-      AStream.WriteWord(bits and $ffff);
-      bits := bits shr 16;
-    end;
+    piggyCodes[iChunk] := cl[iChunk].reducedChunk.index;
+    piggyExtraBits[iChunk] := Ord(cl[iChunk].dstNegative) or (Ord(cl[iChunk].dstReversed) shl 1);
   end;
 
-  if bitCnt > 0 then
-  begin
-    Assert(bitCnt <= 16);
-    AStream.WriteWord(bits and $ffff);
-    bits := bits shr 16;
+  piggyCoder := TPiggyCoder.Create(piggyCodes, reducedChunks.Count - 1, 2, piggyExtraBits);
+  try
+    piggyCoder.SolveCodingBits;
+    piggyCoder.Render(AStream);
+  finally
+    piggyCoder.Free;
   end;
 end;
 
@@ -907,7 +1025,7 @@ end;
 
 procedure TEncoder.PrepareFrames;
 const
-  CVariableCodingRatio = 0.72;
+  CVariableCodingRatio = 0.51;
 var
   j, i, k, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
@@ -944,11 +1062,11 @@ begin
 
     fixedCost := 0 {no header besides frame};
 
-    indexingCost := (SampleCount * ChannelCount * (Log2(ChunksPerFrame) + (1 + CVariableCodingHeaderSize) + 1 {dstNegative} + 1 {dstReversed})) / (8 {bytes -> bits} * (ChunkSize - ChunkBlend));
+    indexingCost := (SampleCount * ChannelCount * (Log2(ChunksPerFrame) * CVariableCodingRatio + (1 + 2) + 1 {dstNegative} + 1 {dstReversed})) / (8 {bytes -> bits} * (ChunkSize - ChunkBlend));
 
     chunksCost := (ChunksPerFrame * ChunkSize) * ChunkBitDepth / 8 + ChunksPerFrame * 4 / 8 + (4 * SizeOf(Word) + SizeOf(Cardinal) + SizeOf(Cardinal)) {frame header};
 
-    tentativeByteSize := Round(fixedCost + indexingCost * CVariableCodingRatio + FrameCount * chunksCost);
+    tentativeByteSize := Round(fixedCost + indexingCost + FrameCount * chunksCost);
 
   until (tentativeByteSize <= ProjectedByteSize) or (ChunksPerFrame <= 1);
 
