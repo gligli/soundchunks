@@ -7,7 +7,7 @@ uses
   extern, ap, conv, correlation, orthogonal_kmeans, mtpool;
 
 const
-  CStreamVersion = 2;
+  CStreamVersion = 3;
   CMaxAttenuation = 15;
   CMaxChunksPerFrame = 4096;
   CAttenuationLawNumerator = 1;
@@ -281,6 +281,9 @@ var
   iCode, iCodingBits, itemBitCnt, overallBitCnt, codeValue, codeBitsLimit, prevCodingBits: Integer;
   itemBits, overallBits: UInt64;
 begin
+  for iCodingBits := 0 to CMaxCodingCount - 1 do
+    AStream.WriteByte(ACodingBits[iCodingBits]);
+
   overallBits := 0;
   overallBitCnt := 0;
 
@@ -1064,7 +1067,7 @@ begin
 
     indexingCost := (SampleCount * ChannelCount * (Log2(ChunksPerFrame) * CVariableCodingRatio + (1 + 2) + 1 {dstNegative} + 1 {dstReversed})) / (8 {bytes -> bits} * (ChunkSize - ChunkBlend));
 
-    chunksCost := (ChunksPerFrame * ChunkSize) * ChunkBitDepth / 8 + ChunksPerFrame * 4 / 8 + (4 * SizeOf(Word) + SizeOf(Cardinal) + SizeOf(Cardinal)) {frame header};
+    chunksCost := (ChunksPerFrame * ChunkSize) * ChunkBitDepth / 8 + ChunksPerFrame * 4 / 8 + (4 * SizeOf(Word) + SizeOf(Cardinal) + SizeOf(Cardinal) + ChannelCount * SizeOf(Word) + TPiggyCoder.CMaxCodingCount * SizeOf(Byte)) {frame header};
 
     tentativeByteSize := Round(fixedCost + indexingCost + FrameCount * chunksCost);
 
