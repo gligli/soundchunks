@@ -95,6 +95,11 @@ type
     function random(): Double;
   end;
 
+  TYakmo = record
+  end;
+
+  PYakmo = ^TYakmo;
+
 procedure SpinEnter(Lock: PSpinLock); register; assembler;
 procedure SpinEnterSleep(Lock: PSpinLock); register; assembler;
 procedure SpinLeave(Lock: PSpinLock); register; assembler;
@@ -132,6 +137,14 @@ function ann_kdtree_search(akd: PANNkdtree; q: PANNFloat; eps: TANNFloat; err: P
 function ann_kdtree_pri_search(akd: PANNkdtree; q: PANNFloat; eps: TANNFloat; err: PANNFloat): Integer; cdecl; external 'ANN.dll';
 procedure ann_kdtree_search_multi(akd: PANNkdtree; idxs: PInteger; errs: PANNFloat; cnt: Integer; q: PANNFloat; eps: TANNFloat); cdecl; external 'ANN.dll';
 procedure ann_kdtree_pri_search_multi(akd: PANNkdtree; idxs: PInteger; errs: PANNFloat; cnt: Integer; q: PANNFloat; eps: TANNFloat); cdecl; external 'ANN.dll';
+
+function yakmo_create(k: Cardinal; restartCount: Cardinal; maxIter: Integer; initType: Integer; initSeed: Integer; doNormalize: Integer; isVerbose: Integer): PYakmo; stdcall; external 'yakmo.dll';
+procedure yakmo_destroy(ay: PYakmo); stdcall; external 'yakmo.dll';
+procedure yakmo_set_num_threads(num_threads: Integer); stdcall; external 'yakmo.dll';
+procedure yakmo_load_train_data(ay: PYakmo; rowCount: Cardinal; colCount: Cardinal; dataset: PPDouble); stdcall; external 'yakmo.dll';
+procedure yakmo_load_train_data_weighted(ay: PYakmo; rowCount: Cardinal; colCount: Cardinal; dataset: PPDouble; weights: PCardinal); stdcall; external 'yakmo.dll';
+procedure yakmo_train_on_data(ay: PYakmo; pointToCluster: PInteger); stdcall; external 'yakmo.dll';
+procedure yakmo_get_centroids(ay: PYakmo; centroids: PPDouble); stdcall; external 'yakmo.dll';
 
 function eaqualCreateInstance: Pointer; cdecl; external 'libEAQUAL.dll';
 procedure eaqualKillInstance(pInstance: Pointer); cdecl; external 'libEAQUAL.dll';

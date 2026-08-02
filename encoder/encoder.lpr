@@ -4,12 +4,12 @@ program encoder;
 
 uses
   windows, Classes, sysutils, strutils, Types, fgl, math,
-  extern, ap, conv, correlation, orthogonal_kmeans, mtpool;
+  extern, ap, conv, correlation, mtpool;
 
 const
   CStreamVersion = 3;
   CMaxAttenuation = 15;
-  CMaxChunksPerFrame = 4096;
+  CMaxChunksPerFrame = 65536;
   CAttenuationLawNumerator = 1;
 
 type
@@ -47,7 +47,7 @@ type
     frame: TFrame;
     reducedChunk: TChunk;
 
-    channel, index, bandIndex, useCount: Integer;
+    channel, index, useCount: Integer;
     dstNegative: Boolean;
     dstReversed: Boolean;
     dstAttenuation: Integer;
@@ -55,7 +55,7 @@ type
     srcData: TDoubleDynArray;
     dstData: TSmallIntDynArray;
 
-    constructor Create(frm: TFrame; idx, bandIdx: Integer; srcDta: PDouble);
+    constructor Create(frm: TFrame; idx: Integer; srcDta: PDouble);
 
     function ComputeDCT: TDoubleDynArray;
     procedure ComputeFromInvDCT(const InvDCT: TDoubleDynArray);
@@ -351,10 +351,9 @@ end;
 
 { TChunk }
 
-constructor TChunk.Create(frm: TFrame; idx, bandIdx: Integer; srcDta: PDouble);
+constructor TChunk.Create(frm: TFrame; idx: Integer; srcDta: PDouble);
 begin
   index := idx;
-  bandIndex := bandIdx;
   frame := frm;
   reducedChunk := Self;
   channel := -1;
@@ -529,7 +528,7 @@ begin
   for iChunk := 0 to ChunkCount - 1 do
     for iChannel := 0 to encoder.ChannelCount - 1 do
     begin
-      chunk := TChunk.Create(Self, iChunk, index, @srcData[iChannel, 0]);
+      chunk := TChunk.Create(Self, iChunk, @srcData[iChannel, 0]);
       chunk.channel := iChannel;
       chunk.ComputeDstAttributes;
       chunk.MakeDstData;
@@ -578,9 +577,9 @@ var
   iChunk, prec, colCount, clusterCount: Integer;
   chunk: TChunk;
   Clusters: TIntegerDynArray;
-  Dataset: TKFloatArray2;
-  Centroids: TKFloatArray2;
-  Yakmo: TOrthogonalKmeans;
+  Dataset: TDoubleDynArray2;
+  Centroids: TDoubleDynArray2;
+  Yakmo: PYakmo;
 begin
   prec := encoder.Precision;
 
@@ -606,13 +605,14 @@ begin
     begin
       if clusterCount > 1 then
       begin
-        Yakmo := TOrthogonalKmeans.Create(clusterCount, -1, kiKMeansPP, encoder.ThreadsPerFrame, False);
+        Yakmo := yakmo_create(clusterCount, 1, 0, 1, 0, 0, Ord(encoder.Verbose));
         try
-          Yakmo.load_train_data(chunkRefs.Count, colCount, PPKFloat(@Dataset[0]));
-          Yakmo.train_on_data(@Clusters[0]);
-          Yakmo.get_centroids(PPKFloat(@Centroids[0]));
+          yakmo_set_num_threads(encoder.ThreadsPerFrame);
+          yakmo_load_train_data(Yakmo, chunkRefs.Count, colCount, PPDouble(@Dataset[0]));
+          yakmo_train_on_data(Yakmo, @Clusters[0]);
+          yakmo_get_centroids(Yakmo, PPDouble(@Centroids[0]));
         finally
-          Yakmo.Free;
+          yakmo_destroy(Yakmo);
         end;
       end;
     end
@@ -626,7 +626,7 @@ begin
     reducedChunks.Capacity := clusterCount;
     for iChunk := 0 to clusterCount - 1 do
     begin
-      chunk := TChunk.Create(Self, iChunk, -1, nil);
+      chunk := TChunk.Create(Self, iChunk, nil);
       reducedChunks.Add(chunk);
 
       chunk.ComputeFromInvDCT(Centroids[iChunk]);
@@ -645,7 +645,7 @@ begin
     reducedChunks.Capacity := chunkRefs.Count;
     for iChunk := 0 to reducedChunks.Capacity - 1 do
     begin
-      chunk := TChunk.Create(Self, iChunk, -1, nil);
+      chunk := TChunk.Create(Self, iChunk, nil);
       reducedChunks.Add(chunk);
 
       chunk.srcData := Copy(chunkRefs[iChunk].srcData);
@@ -1224,7 +1224,7 @@ begin
   Precision := 3;
   ThreadsPerFrame := NumberOfProcessors;
 
-  ChunksPerFrame := CMaxChunksPerFrame;
+  ChunksPerFrame := 4096;
   BandTransFactor := 1 / 256;
 
   frames := TFrameList.Create;
@@ -1563,7 +1563,7 @@ begin
       Writeln('Development options:');
       WriteLn(#9'-d'#9'debug mode (outputs decoded WAVs)');
       WriteLn(#9'-cs'#9'chunk size');
-      WriteLn(#9'-cpf'#9'max. chunks per frame (256-4096)');
+      WriteLn(#9'-cpf'#9'max. chunks per frame (256-65536)');
       WriteLn(#9'-cbd'#9'chunk bit depth (8,12)');
       WriteLn(#9'-pr'#9'K-means precision; 0: "lossless" mode');
       WriteLn(#9'-cb'#9'chunk blend');
