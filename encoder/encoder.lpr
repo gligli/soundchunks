@@ -1028,7 +1028,7 @@ end;
 
 procedure TEncoder.PrepareFrames;
 const
-  CVariableCodingRatio = 0.51;
+  CVariableCodingRatio = 0.67;
 var
   j, i, k, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
@@ -1065,7 +1065,7 @@ begin
 
     fixedCost := 0 {no header besides frame};
 
-    indexingCost := (SampleCount * ChannelCount * (Log2(ChunksPerFrame) * CVariableCodingRatio + (1 + 2) + 1 {dstNegative} + 1 {dstReversed})) / (8 {bytes -> bits} * (ChunkSize - ChunkBlend));
+    indexingCost := (SampleCount * ChannelCount * ((Log2(ChunksPerFrame) + Log2(TPiggyCoder.CMaxCodingCount)) * CVariableCodingRatio + 1 + 1 {dstNegative} + 1 {dstReversed})) / (8 {bytes -> bits} * (ChunkSize - ChunkBlend));
 
     chunksCost := (ChunksPerFrame * ChunkSize) * ChunkBitDepth / 8 + ChunksPerFrame * 4 / 8 + (4 * SizeOf(Word) + SizeOf(Cardinal) + SizeOf(Cardinal) + ChannelCount * SizeOf(Word) + TPiggyCoder.CMaxCodingCount * SizeOf(Byte)) {frame header};
 
