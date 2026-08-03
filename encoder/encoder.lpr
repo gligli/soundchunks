@@ -164,8 +164,8 @@ type
     class procedure ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
     class procedure ComputeInvDCT(chunkSz: Integer; dct, samples: PDouble);
     class function CompareEuclidean(const dctA, dctB: TDoubleDynArray): Double; overload;
-    class function CompareMuLawManhattan(const dctA, dctB: TDoubleDynArray): Double;
-    class function ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): Double;
+    class function CompareMuLawManhattan(const dctA, dctB: TDoubleDynArray): Complex;
+    class function ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): Complex;
     class procedure createWAV(channels: word; resolution: word; rate: longint; fn: string; const data: TSmallIntDynArray);
 
     constructor Create(InFN, OutFN: String);
@@ -1361,17 +1361,22 @@ begin
   Result := sqrt(Result / Length(dctA));
 end;
 
-class function TEncoder.CompareMuLawManhattan(const dctA, dctB: TDoubleDynArray): Double;
+class function TEncoder.CompareMuLawManhattan(const dctA, dctB: TDoubleDynArray): Complex;
 var
   i: Integer;
 begin
   Assert(Length(dctA) = Length(dctB));
 
-  Result := 0.0;
+  Result.X := 0.0;
+  Result.Y := 0.0;
   for i := 0 to High(dctA) do
-    Result += Abs(muLaw(dctA[i]) - muLaw(dctB[i]));
+  begin
+    Result.X += Abs(dctA[i] - dctB[i]);
+    Result.Y += Abs(muLaw(dctA[i]) - muLaw(dctB[i]));
+  end;
 
-  Result := Result / Length(dctA);
+  Result.X := Result.X / Length(dctA);
+  Result.Y := Result.Y / Length(dctA);
 end;
 
 function TEncoder.ComputeEAQUAL(chunkSz: Integer; UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
@@ -1395,7 +1400,7 @@ begin
   DeleteFile(FNTst);
 end;
 
-class function TEncoder.ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): Double;
+class function TEncoder.ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): Complex;
 var
   i, j, len: Integer;
   rr, rt: TDoubleDynArray;
@@ -1412,7 +1417,10 @@ begin
       rt[j * Length(smpRef[0]) + i] := makeFloatSample(smpTst[j, i]);
     end;
 
-  Result := CompareMuLawManhattan(rr, rt) * High(SmallInt);
+  Result := CompareMuLawManhattan(rr, rt);
+
+  Result.X *= High(SmallInt);
+  Result.Y *= High(SmallInt);
 end;
 
 class procedure TEncoder.createWAV(channels: word; resolution: word; rate: longint; fn: string; const data: TSmallIntDynArray);
@@ -1474,6 +1482,7 @@ end;
 
 var
   enc: TEncoder;
+  psyA: Complex;
 begin
   try
     FormatSettings.DecimalSeparator := '.';
@@ -1549,7 +1558,8 @@ begin
       if enc.Precision > 0 then
         enc.SaveGSC;
 
-      WriteLn('PsyADelta = ', FormatFloat('0.0000000000', enc.ComputePsyADelta(enc.srcData, enc.dstData)));
+      psyA :=  enc.ComputePsyADelta(enc.srcData, enc.dstData);
+      WriteLn('[PsyADelta] Linear:', psyA.X:12:6, ', mu-Law:', psyA.Y:12:6);
 
     finally
       enc.Free;
