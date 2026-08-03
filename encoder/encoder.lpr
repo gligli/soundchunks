@@ -24,7 +24,8 @@ type
 
   TPiggyCoder = class
   const
-    CMaxCodingCount = 4;
+    CMaxCodingBits = 2;
+    CMaxCodingCount = 1 shl CMaxCodingBits;
   type
     TCode = record
       Code: Cardinal;
@@ -315,7 +316,7 @@ begin
           itemBitCnt += 1;
 
           itemBits := itemBits or (iCodingBits shl itemBitCnt);
-          itemBitCnt += 2;
+          itemBitCnt += CMaxCodingBits;
 
           prevCodingBits := iCodingBits;
         end;
@@ -648,7 +649,7 @@ begin
     begin
       if clusterCount > 1 then
       begin
-        Yakmo := yakmo_create(clusterCount, 1, 0, 1, 0, 0, Ord(encoder.Verbose));
+        Yakmo := yakmo_create(clusterCount, 1, -1, 1, 0, 0, Ord(encoder.Verbose));
         try
           yakmo_set_num_threads(encoder.ThreadsPerFrame);
           yakmo_load_train_data(Yakmo, chunkRefs.Count, colCount, PPDouble(@Dataset[0]));
@@ -1068,7 +1069,7 @@ begin
 
     indexingCost :=
       (SampleCount * ChannelCount * (
-        (Log2(ChunksPerFrame) + Log2(TPiggyCoder.CMaxCodingCount) + 1) * CVariableCodingRatio +
+        (Log2(ChunksPerFrame) + TPiggyCoder.CMaxCodingBits + 1) * CVariableCodingRatio +
         1 {dstNegative} + 1 {dstReversed} +
         CMaxAttenuationBits / (ChunksPerAttenuation * ChannelCount) +
         CMaxAttenuationLawDiviverBits / (AttenuationsPerAttenuationLaw * ChunksPerAttenuation * ChannelCount)
