@@ -120,6 +120,8 @@ type
       AsInt: SmallInt;
       AsDouble: Double;
     end;
+  private
+    function GetThreadsPerFrame: Cardinal;
   public
     inputFN, outputFN: String;
 
@@ -134,15 +136,17 @@ type
     FrameLength: Double;
     PythonReduce: Boolean;
     DebugMode: Boolean;
-    ThreadsPerFrame: Cardinal;
 
     ChannelCount: Integer;
     SampleRate: Integer;
     SampleCount: Integer;
     BlockSampleCount: Integer;
-    ProjectedByteSize, FrameCount: Integer;
+    ProjectedByteSize: Integer;
     ChunksPerAttenuation: Integer;
     AttenuationsPerAttenuationLaw: Integer;
+    FrameCount: Integer;
+
+    FramesLeft: Integer;
     Verbose: Boolean;
 
     srcHeader: array[$00..$2b] of Byte;
@@ -177,6 +181,8 @@ type
     procedure MakeDstData;
 
     function ComputeEAQUAL(chunkSz: Integer; UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
+
+    property ThreadsPerFrame: Cardinal read GetThreadsPerFrame;
   end;
 
 
@@ -571,7 +577,7 @@ begin
   chunksPerAttLaw := encoder.AttenuationsPerAttenuationLaw * encoder.ChunksPerAttenuation;
   attLawCnt := (ChunkCount - 1) div chunksPerAttLaw + 1;
 
-  TMTPool.DoStandaloneLocalProc(@DoAttLaw, 0, attLawCnt - 1, NumberOfProcessors);
+  TMTPool.DoStandaloneLocalProc(@DoAttLaw, 0, attLawCnt - 1, encoder.ThreadsPerFrame);
 end;
 
 procedure TFrame.ComputeAttenuations;
@@ -657,6 +663,9 @@ begin
           yakmo_get_centroids(Yakmo, PPDouble(@Centroids[0]));
         finally
           yakmo_destroy(Yakmo);
+
+          InterLockedDecrement(encoder.FramesLeft);
+          yakmo_set_num_threads(encoder.ThreadsPerFrame);
         end;
       end;
     end
@@ -1158,8 +1167,7 @@ begin
   frames.Add(frm);
 
   FrameCount := frames.Count;
-
-  ThreadsPerFrame := max(1, (ThreadsPerFrame - 1) div FrameCount + 1);
+  FramesLeft := FrameCount;
 end;
 
 procedure TEncoder.MakeFrames;
@@ -1202,7 +1210,6 @@ begin
   FrameLength := 8000; // in ms
   PythonReduce := False;
   Precision := 3;
-  ThreadsPerFrame := NumberOfProcessors;
   ChunksPerAttenuation := 16;
   AttenuationsPerAttenuationLaw := 16;
 
@@ -1236,6 +1243,11 @@ begin
         Inc(pos);
       end;
   end;
+end;
+
+function TEncoder.GetThreadsPerFrame: Cardinal;
+begin
+  Result := iDivDef(NumberOfProcessors - 1, FramesLeft, 1) + 1;
 end;
 
 class function TEncoder.simpleRound(smp: Double): Integer;
