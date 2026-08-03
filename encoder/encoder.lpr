@@ -124,9 +124,6 @@ type
 
     BitRate: Integer;
     Precision: Integer;
-    BandTransFactor: Double;
-    LowCut: Double;
-    HighCut: Double;
     ChunkBitDepth: Integer; // 8 or 12 Bits
     ChunkSize: Integer;
     ChunksPerFrame: Integer;
@@ -149,7 +146,6 @@ type
 
     srcHeader: array[$00..$2b] of Byte;
     srcData: TSmallIntDynArray2;
-    filteredData: TDoubleDynArray2;
     dstData: TSmallIntDynArray2;
 
     frames: TFrameList;
@@ -175,15 +171,9 @@ type
     function SaveGSC: Double;
     procedure SaveStream(AStream: TStream);
 
-    procedure MakeFilteredData;
-
     procedure PrepareFrames;
     procedure MakeFrames;
     procedure MakeDstData;
-
-    function DoFilterCoeffs(fc, transFactor: Double; HighPass, Windowed: Boolean): TDoubleDynArray;
-    function DoFilter(const samples, coeffs: TDoubleDynArray): TDoubleDynArray;
-    function DoBPFilter(fcl, fch, transFactor: Double; const samples: TDoubleDynArray): TDoubleDynArray;
 
     function ComputeEAQUAL(chunkSz: Integer; UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
   end;
@@ -461,12 +451,12 @@ begin
   SetLength(srcData, encoder.ChannelCount, endSmp - startSmp + 1);
   for iChannel := 0 to High(srcData) do
   begin
-    srcFirstSample[iChannel] := encoder.filteredData[iChannel, startSmp + 0];
+    srcFirstSample[iChannel] := TEncoder.makeFloatSample(encoder.srcData[iChannel, startSmp + 0]);
 
     prevSmp := srcFirstSample[iChannel];
     for iSample := 0 to endSmp - startSmp + 1 - 1 do
     begin
-      smp := encoder.filteredData[iChannel, startSmp + iSample];
+      smp := TEncoder.makeFloatSample(encoder.srcData[iChannel, startSmp + iSample]);
       srcData[iChannel, iSample] := smp - prevSmp;
       prevSmp := smp;
     end;
@@ -1073,20 +1063,6 @@ begin
     frames[i].SaveStream(AStream);
 end;
 
-procedure TEncoder.MakeFilteredData;
-var
-  i, j: Integer;
-begin
-  SetLength(filteredData, ChannelCount, SampleCount);
-  for i := 0 to ChannelCount - 1 do
-    for j := 0 to SampleCount - 1 do
-      filteredData[i, j] := makeFloatSample(srcData[i, j]);
-
-  // band pass the samples
-  for i := 0 to ChannelCount - 1 do
-    filteredData[i] := DoBPFilter(LowCut / SampleRate, HighCut / SampleRate, BandTransFactor, filteredData[i]);
-end;
-
 procedure TEncoder.PrepareFrames;
 const
   CAttenuationMilliseconds = 2.0;
@@ -1166,8 +1142,6 @@ begin
     writeln('ProjectedByteSize = ', ProjectedByteSize);
     writeln('ChunkSize = ', ChunkSize);
   end;
-
-  MakeFilteredData;
 
   // pass 2
 
@@ -1252,39 +1226,6 @@ begin
   WriteLn;
 end;
 
-function TEncoder.DoFilter(const samples, coeffs: TDoubleDynArray): TDoubleDynArray;
-var
-  i: Integer;
-begin
-  Result := nil;
-  ConvR1D(samples, Length(samples), coeffs, Length(coeffs), Result);
-
-  for i := 0 to High(samples) do
-    Result[i] := Result[i + High(coeffs) div 2];
-
-  SetLength(Result, Length(samples));
-end;
-
-function TEncoder.DoBPFilter(fcl, fch, transFactor: Double; const samples: TDoubleDynArray
-  ): TDoubleDynArray;
-var
-  coeffs: TDoubleDynArray;
-begin
-  Result := samples;
-
-  if fcl > 0.0 then
-  begin
-    coeffs := DoFilterCoeffs(fcl, transFactor * fcl, True, True);
-    Result := DoFilter(Result, coeffs);
-  end;
-
-  if fch < 0.5 then
-  begin
-    coeffs := DoFilterCoeffs(fch, transFactor * fch, False, True);
-    Result := DoFilter(Result, coeffs);
-  end;
-end;
-
 constructor TEncoder.Create(InFN, OutFN: String);
 begin
   inputFN := InFN;
@@ -1292,8 +1233,6 @@ begin
 
   BitRate := -1;
   Precision := 1;
-  LowCut := 0.0;
-  HighCut := 24000.0;
   ChunkBitDepth := 8;
   ChunkSize := 4;
   TrebleBoost := False;
@@ -1307,7 +1246,6 @@ begin
   AttenuationsPerAttenuationLaw := 16;
 
   ChunksPerFrame := 4096;
-  BandTransFactor := 1 / 256;
 
   frames := TFrameList.Create;
 end;
@@ -1336,60 +1274,6 @@ begin
         dstData[iChannel, pos] := make16BitSample(frames[iFrame].dstData[iChannel, iSample]);
         Inc(pos);
       end;
-  end;
-end;
-
-function TEncoder.DoFilterCoeffs(fc, transFactor: Double; HighPass, Windowed: Boolean): TDoubleDynArray;
-var
-  sinc, win, sum: Double;
-  i, N: Integer;
-begin
-  N := ceil(4.6 / transFactor);
-  if (N mod 2) = 0 then N += 1;
-
-  //writeln('DoFilterCoeffs ', ifthen(HighPass, 'HP', 'LP'), ' ', FloatToStr(SampleRate * fc), ' ', N);
-
-  SetLength(Result, N);
-  sum := 0;
-  for i := 0 to N - 1 do
-  begin
-    sinc := 2.0 * fc * (i - (N - 1) / 2.0) * pi;
-    if sinc = 0 then
-      sinc := 1.0
-    else
-      sinc := sin(sinc) / sinc;
-
-    win := 1.0;
-    if Windowed then
-    begin
-{$if true}
-      // blackman window
-      win := 7938/18608 - 9240/18608 * cos(2 * pi * i / (N - 1)) + 1430/18608 * cos(4 * pi * i / (N - 1));
-{$else}
-      // sinc window
-      win := (2 * i / (N - 1) - 1) * pi;
-      if win = 0 then
-        win := 1.0
-      else
-        win := sin(win) / win;
-{$endif}
-    end;
-
-    Result[i] := sinc * win;
-    sum += Result[i];
-  end;
-
-  if HighPass then
-  begin
-    for i := 0 to N - 1 do
-      Result[i] := -Result[i] / sum;
-
-    Result[(N - 1) div 2] += 1.0;
-  end
-  else
-  begin
-    for i := 0 to N - 1 do
-      Result[i] := Result[i] / sum;
   end;
 end;
 
@@ -1635,8 +1519,6 @@ begin
       WriteLn('Usage: ', ExtractFileName(ParamStr(0)) + ' <source file> <dest file> [options]');
       Writeln('Main options:');
       WriteLn(#9'-br'#9'encoder bit rate in kilobits/second; example: "-br250"');
-      WriteLn(#9'-lc'#9'bass cutoff frequency');
-      WriteLn(#9'-hc'#9'treble cutoff frequency');
       WriteLn(#9'-vfr'#9'RMS power based variable frame size ratio (0.0-1.0); default: "-vfr1.0"');
       WriteLn(#9'-fl'#9'(Average) frame length in milliseconds; default: "-fl4000"');
       WriteLn(#9'-v'#9'verbose mode');
@@ -1659,8 +1541,6 @@ begin
     try
       enc.BitRate := round(ParamValue('-br', enc.BitRate));
       enc.Precision := round(ParamValue('-pr', enc.Precision));
-      enc.LowCut := ParamValue('-lc', enc.LowCut);
-      enc.HighCut := ParamValue('-hc', enc.HighCut);
       enc.VariableFrameSizeRatio :=  EnsureRange(ParamValue('-vfr', enc.VariableFrameSizeRatio), 0.0, 1.0);
       enc.FrameLength := Max(ParamValue('-fl', enc.FrameLength), 1.0);
       enc.ChunkBitDepth := EnsureRange(round(ParamValue('-cbd', enc.ChunkBitDepth)), 1, 16);
@@ -1672,8 +1552,6 @@ begin
       enc.DebugMode := HasParam('-d');
 
       WriteLn('BitRate = ', FloatToStr(enc.BitRate));
-      WriteLn('LowCut = ', FloatToStr(enc.LowCut));
-      WriteLn('HighCut = ', FloatToStr(enc.HighCut));
       WriteLn('VariableFrameSizeRatio = ', FloatToStr(enc.VariableFrameSizeRatio));
       WriteLn('FrameLength = ', enc.FrameLength:0:0);
       if enc.Verbose then
