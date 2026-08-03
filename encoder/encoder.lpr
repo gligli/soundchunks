@@ -700,22 +700,14 @@ begin
 end;
 
 procedure TFrame.Reconstruct;
-const
-  cKnnK = 256;
 var
-  i: Integer;
-  obd, attCoeff: Double;
-
-  iK, iChunk, iSample, iChannel, iAtt, dsIdx, bestIdx, idx, knnK: Integer;
-  err, offsetErr, bestErr, curTruthAcc, curLossyAcc: Double;
+  iDS, iChunk, iSample, iChannel, iAtt, dsIdx, bestIdx: Integer;
+  bestErr, attCoeff, skew: Double;
   truthAcc, lossyAcc: TDoubleDynArray;
   Dataset: TANNFloatDynArray2;
   query, queryDCT: TANNFloatDynArray;
   KDT: PANNkdtree;
   chunk: TChunk;
-
-  idxs: array[0 .. cKnnK - 1] of Integer;
-  errs: array[0 .. cKnnK - 1] of TANNFloat;
 begin
   SetLength(Dataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, encoder.chunkSize * 2);
 
@@ -742,15 +734,12 @@ begin
       Dataset[dsIdx + 3, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, -1, True, 0.0);
     end;
 
-    TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx + 0, encoder.chunkSize], @Dataset[dsIdx + 0, 0]);
-    TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx + 1, encoder.chunkSize], @Dataset[dsIdx + 1, 0]);
-    TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx + 2, encoder.chunkSize], @Dataset[dsIdx + 2, 0]);
-    TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx + 3, encoder.chunkSize], @Dataset[dsIdx + 3, 0]);
-
-    Inc(dsIdx, 4);
+    for iDS := 0 to 3 do
+    begin
+      TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx, encoder.chunkSize], @Dataset[dsIdx, 0]);
+      Inc(dsIdx);
+    end;
   end;
-
-  knnK := min(cKnnK, Length(Dataset));
 
   KDT := ann_kdtree_create(PPANNFloat(@Dataset[0]), Length(Dataset), encoder.ChunkSize, 1, ANN_KD_STD);
   try
@@ -762,42 +751,13 @@ begin
       for iAtt := 0 to chunk.dstAttenuation do
         attCoeff += iAtt * chunk.dstAttenuationLaw;
 
+      skew := (lossyAcc[chunk.channel] - truthAcc[chunk.channel]) / encoder.ChunkSize;
       for iSample := 0 to encoder.ChunkSize - 1 do
-        query[iSample] := chunk.srcData[iSample] * attCoeff;
+        query[iSample] := (chunk.srcData[iSample] - skew) * attCoeff;
 
-      // DCT
       TEncoder.ComputeDCT(encoder.ChunkSize, @query[0], @queryDCT[0]);
 
-      // query
-      ann_kdtree_pri_search_multi(KDT, @idxs[0], @errs[0], knnK, @queryDCT[0], 0.0);
-
-      bestErr := Infinity;
-      bestIdx := -1;
-      for iK := 0 to knnK - 1 do
-      begin
-        idx := idxs[iK];
-        err := errs[iK];
-
-        curTruthAcc := truthAcc[chunk.channel];
-        curLossyAcc := lossyAcc[chunk.channel];
-
-        for iSample := 0 to encoder.ChunkSize - 1 do
-        begin
-          curTruthAcc += chunk.srcData[iSample];
-          curLossyAcc += Dataset[idx, encoder.ChunkSize + iSample] / attCoeff;
-        end;
-
-        offsetErr := Sqr(curLossyAcc - curTruthAcc);
-
-        if offsetErr < bestErr then
-        begin
-          bestErr := offsetErr;
-          bestIdx := idx;
-        end;
-
-        if not SameValue(err, errs[0], sqr(0.5 / High(SmallInt)) * encoder.ChunkSize) then
-          Break;
-      end;
+      bestIdx := ann_kdtree_search(KDT, @queryDCT[0], 0.0, @bestErr);
 
       chunk.dstNegative := bestIdx and 1 <> 0;
       chunk.dstReversed := bestIdx and 2 <> 0;
