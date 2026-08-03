@@ -7,9 +7,11 @@ uses
   extern, ap, conv, correlation, mtpool;
 
 const
-  CStreamVersion = 3;
-  CMaxAttenuationBits = 4;
+  CStreamVersion = 4;
+  CMaxAttenuationBits = 6;
   CMaxAttenuation = (1 shl CMaxAttenuationBits) - 1;
+  CMaxAttenuationLawDiviverBits = 8;
+  CMaxAttenuationLawDiviver = (1 shl CMaxAttenuationLawDiviverBits) - 1;
   CMaxChunksPerFrame = 65536;
   CAttenuationLawNumerator = 1;
 
@@ -49,6 +51,8 @@ type
   TChunkList = specialize TFPGObjectList<TChunk>;
 
   TChunk = class
+  private
+    function GetdstAttenuationLaw: Double;
   public
     frame: TFrame;
     reducedChunk: TChunk;
@@ -57,6 +61,7 @@ type
     dstNegative: Boolean;
     dstReversed: Boolean;
     dstAttenuation: Integer;
+    dstAttenuationLawDivider: Integer;
 
     srcData: TDoubleDynArray;
     dstData: TSmallIntDynArray;
@@ -67,13 +72,13 @@ type
     procedure ComputeFromInvDCT(const InvDCT: TDoubleDynArray);
     procedure ComputeDstAttributes;
     procedure MakeDstData;
+
+    property dstAttenuationLaw: Double read GetdstAttenuationLaw;
   end;
 
   { TFrame }
 
   TFrame = class
-  private
-    function GetAttenuationLaw: Double;
   public
     encoder: TEncoder;
 
@@ -82,7 +87,6 @@ type
     StartSample: Integer;
     SampleCount: Integer;
     FrameSize: Integer;
-    AttenuationLawDivider: Integer;
 
     chunkRefs, reducedChunks, finalChunks: TChunkList;
 
@@ -94,15 +98,13 @@ type
     constructor Create(enc: TEncoder; idx, startSmp, endSmp: Integer);
     destructor Destroy; override;
 
-    procedure FindAttenuationLawDivider;
     procedure MakeChunks;
+    procedure FindAttenuationLawDivider;
     procedure ComputeAttenuations;
     procedure Reduce;
     procedure Reconstruct;
     procedure SaveStream(AStream: TStream);
     procedure MakeDstData;
-
-    property AttenuationLaw: Double read GetAttenuationLaw;
   end;
 
   TFrameList = specialize TFPGObjectList<TFrame>;
@@ -142,6 +144,7 @@ type
     BlockSampleCount: Integer;
     ProjectedByteSize, FrameCount: Integer;
     ChunksPerAttenuation: Integer;
+    AttenuationsPerAttenuationLaw: Integer;
     Verbose: Boolean;
 
     srcHeader: array[$00..$2b] of Byte;
@@ -160,7 +163,7 @@ type
     class procedure ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
     class procedure ComputeInvDCT(chunkSz: Integer; dct, samples: PDouble);
     class function CompareEuclidean(const dctA, dctB: TDoubleDynArray): Double; overload;
-    class function CompareManhattan(const dctA, dctB: TDoubleDynArray): Double;
+    class function CompareMuLawManhattan(const dctA, dctB: TDoubleDynArray): Double;
     class function ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): Double;
     class procedure createWAV(channels: word; resolution: word; rate: longint; fn: string; const data: TSmallIntDynArray);
 
@@ -356,6 +359,11 @@ end;
 
 { TChunk }
 
+function TChunk.GetdstAttenuationLaw: Double;
+begin
+  Result := CAttenuationLawNumerator / dstAttenuationLawDivider;
+end;
+
 constructor TChunk.Create(frm: TFrame; idx: Integer; srcDta: PDouble);
 begin
   index := idx;
@@ -375,7 +383,7 @@ var
 begin
   SetLength(data, Length(srcData));
   for iSample := 0 to High(data) do
-    data[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(data) - iSample, iSample)], 2, dstAttenuation, dstNegative, frame.AttenuationLaw).AsDouble;
+    data[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(data) - iSample, iSample)], 2, dstAttenuation, dstNegative, dstAttenuationLaw).AsDouble;
 
   SetLength(Result, Length(srcData));
   TEncoder.ComputeDCT(Length(data), @data[0], @Result[0]);
@@ -391,7 +399,7 @@ begin
 
   SetLength(dstData, Length(srcData));
   for iSample := 0 to High(data) do
-    dstData[iSample] := TEncoder.makeOutputSample(data[iSample], frame.encoder.ChunkBitDepth, 0, False, frame.AttenuationLaw).AsInt;
+    dstData[iSample] := TEncoder.makeOutputSample(data[iSample], frame.encoder.ChunkBitDepth, -1, False, 0.0).AsInt;
 end;
 
 procedure TChunk.ComputeDstAttributes;
@@ -432,7 +440,7 @@ var
 begin
   SetLength(dstData, length(srcData));
   for i := 0 to High(dstData) do
-    dstData[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(dstData) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative, frame.AttenuationLaw).AsInt;
+    dstData[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(dstData) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative, dstAttenuationLaw).AsInt;
 end;
 
 constructor TFrame.Create(enc: TEncoder; idx, startSmp, endSmp: Integer);
@@ -444,7 +452,6 @@ begin
   index := idx;
   StartSample := startSmp;
   SampleCount := endSmp - startSmp + 1;
-  AttenuationLawDivider := 6;
 
   chunkRefs := TChunkList.Create(False);
   reducedChunks := TChunkList.Create;
@@ -480,53 +487,6 @@ begin
   inherited Destroy;
 end;
 
-function TFrame.GetAttenuationLaw: Double;
-begin
-  Result := CAttenuationLawNumerator / AttenuationLawDivider;
-end;
-
-procedure TFrame.FindAttenuationLawDivider;
-var
-  iAttLawDen, iChannel, iAtt, iSample, attCnt, attSmpCnt, att: Integer;
-  best, v, fs, law: Double;
-  pSmp: PDouble;
-  os: SmallInt;
-begin
-  attSmpCnt := encoder.ChunkSize * encoder.ChunksPerAttenuation;
-  attCnt := SampleCount div attSmpCnt;
-  best := Infinity;
-  for iAttLawDen := CAttenuationLawNumerator to CAttenuationLawNumerator * (CMaxAttenuation + 1) * 4 do
-  begin
-    law := CAttenuationLawNumerator / iAttLawDen;
-
-    v := 0.0;
-    for iChannel := 0 to encoder.ChannelCount - 1 do
-    begin
-      pSmp := @srcData[iChannel, 0];
-
-      for iAtt := 0 to attCnt - 1 do
-      begin
-        att := TEncoder.ComputeAttenuation(attSmpCnt, pSmp, law);
-
-        for iSample := 0 to attSmpCnt - 1 do
-        begin
-          os := TEncoder.makeOutputSample(pSmp^, encoder.ChunkBitDepth, att, False, law).AsInt;
-          fs := TEncoder.makeFloatSample(os, encoder.ChunkBitDepth, att, False, law);
-          v += Sqr(pSmp^ - fs);
-
-          Inc(pSmp);
-        end;
-      end;
-    end;
-
-    if v < best then
-    begin
-      best := v;
-      AttenuationLawDivider := iAttLawDen;
-    end;
-  end;
-end;
-
 procedure TFrame.MakeChunks;
 var
   iChannel, iChunk: Integer;
@@ -544,6 +504,83 @@ begin
       finalChunks.Add(chunk);
       chunkRefs.Add(chunk);
     end;
+end;
+
+procedure TFrame.FindAttenuationLawDivider;
+var
+  attLawCnt, chunksPerAttLaw: Integer;
+
+  procedure DoAttLaw(Index: PtrInt; Data: Pointer);
+  var
+    iChunk, iAtt, iAttLawDen, iChannel, iAttLaw, iSample, attLawSmpCnt, attSmpCnt, att, loIdx, hiIdx, bestALD: Integer;
+    best, v, fs, law: Double;
+    os: SmallInt;
+    chunkBuffer: TDoubleDynArray;
+    pBuf: PDouble;
+    chunk: TChunk;
+  begin
+    iAttLaw := Index;
+
+    SetLength(chunkBuffer, chunksPerAttLaw * encoder.ChunkSize * encoder.ChannelCount);
+
+    loIdx := iAttLaw * chunksPerAttLaw;
+    hiIdx := Min((iAttLaw + 1) * chunksPerAttLaw, ChunkCount) - 1;
+
+    attLawSmpCnt := 0;
+    for iChunk := loIdx to hiIdx do
+      for iChannel := 0 to encoder.ChannelCount - 1 do
+      begin
+        chunk := chunkRefs[iChunk * encoder.ChannelCount + iChannel];
+
+        for iSample := 0 to encoder.ChunkSize - 1 do
+        begin
+          chunkBuffer[attLawSmpCnt] := chunk.srcData[iSample];
+          Inc(attLawSmpCnt);
+        end;
+      end;
+
+    best := Infinity;
+    bestALD := -1;
+    for iAttLawDen := CAttenuationLawNumerator to CAttenuationLawNumerator * CMaxAttenuationLawDiviver do
+    begin
+      law := CAttenuationLawNumerator / iAttLawDen;
+
+      v := 0.0;
+      pBuf := @chunkBuffer[0];
+      attSmpCnt := attLawSmpCnt div encoder.AttenuationsPerAttenuationLaw;
+      for iAtt := 0 to encoder.AttenuationsPerAttenuationLaw - 1 do
+      begin
+        att := TEncoder.ComputeAttenuation(attSmpCnt, pBuf, law);
+
+        for iSample := 0 to attSmpCnt - 1 do
+        begin
+          os := TEncoder.makeOutputSample(pBuf^, encoder.ChunkBitDepth, att, False, law).AsInt;
+          fs := TEncoder.makeFloatSample(os, encoder.ChunkBitDepth, att, False, law);
+          v += Abs(pBuf^ - fs);
+
+          Inc(pBuf);
+        end;
+      end;
+
+      if v < best then
+      begin
+        best := v;
+        bestALD := iAttLawDen;
+      end;
+    end;
+
+    //WriteLn(best:12:6, bestALD:8, attLawSmpCnt:8);
+
+    for iChunk := loIdx to hiIdx do
+      for iChannel := 0 to encoder.ChannelCount - 1 do
+        chunkRefs[iChunk * encoder.ChannelCount + iChannel].dstAttenuationLawDivider := bestALD;
+  end;
+
+begin
+  chunksPerAttLaw := encoder.AttenuationsPerAttenuationLaw * encoder.ChunksPerAttenuation;
+  attLawCnt := (ChunkCount - 1) div chunksPerAttLaw + 1;
+
+  TMTPool.DoStandaloneLocalProc(@DoAttLaw, 0, attLawCnt - 1, NumberOfProcessors);
 end;
 
 procedure TFrame.ComputeAttenuations;
@@ -573,10 +610,10 @@ begin
         end;
       end;
 
-    att := TEncoder.ComputeAttenuation(pos, @chunkBuffer[0], AttenuationLaw);
+    att := TEncoder.ComputeAttenuation(pos, @chunkBuffer[0], chunkRefs[loIdx * encoder.ChannelCount].dstAttenuationLaw);
 
-    for iChannel := 0 to encoder.ChannelCount - 1 do
-      for iChunk := loIdx to hiIdx do
+    for iChunk := loIdx to hiIdx do
+      for iChannel := 0 to encoder.ChannelCount - 1 do
         chunkRefs[iChunk * encoder.ChannelCount + iChannel].dstAttenuation := att;
   end;
 end;
@@ -612,7 +649,7 @@ begin
     // usual chunk reduction
 
     if encoder.Verbose then
-      WriteLn('[Reduce] Frame = ', index:4, ', AttenuationLawDivider = ', AttenuationLawDivider:4, ', N = ', chunkRefs.Count:8, ', K = ', clusterCount:6);
+      WriteLn('[Reduce] Frame = ', index:4, ', N = ', chunkRefs.Count:8, ', K = ', clusterCount:6);
 
     SetLength(Clusters, chunkRefs.Count);
     SetLength(Centroids, clusterCount, colCount);
@@ -709,10 +746,10 @@ begin
 
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
-      Dataset[dsIdx + 0, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, False, AttenuationLaw);
-      Dataset[dsIdx + 1, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, True, AttenuationLaw);
-      Dataset[dsIdx + 2, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, False, AttenuationLaw);
-      Dataset[dsIdx + 3, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, True, AttenuationLaw);
+      Dataset[dsIdx + 0, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, -1, False, 0.0);
+      Dataset[dsIdx + 1, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, -1, True, 0.0);
+      Dataset[dsIdx + 2, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, -1, False, 0.0);
+      Dataset[dsIdx + 3, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, -1, True, 0.0);
     end;
 
     TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx + 0, encoder.chunkSize], @Dataset[dsIdx + 0, 0]);
@@ -733,7 +770,7 @@ begin
 
       attCoeff := 1.0;
       for iAtt := 0 to chunk.dstAttenuation do
-        attCoeff += iAtt * AttenuationLaw;
+        attCoeff += iAtt * chunk.dstAttenuationLaw;
 
       for iSample := 0 to encoder.ChunkSize - 1 do
         query[iSample] := chunk.srcData[iSample] * attCoeff;
@@ -816,9 +853,7 @@ begin
   AStream.WriteWord(w and $ffff);
   w := (encoder.ChunkBlend shl 24) or encoder.SampleRate;
   AStream.WriteDWord(w and $ffffffff);
-  w := AttenuationLawDivider;
-  AStream.WriteWord(w and $ffff);
-  w := encoder.ChunksPerAttenuation;
+  w := (encoder.AttenuationsPerAttenuationLaw shl 8) or encoder.ChunksPerAttenuation;
   AStream.WriteWord(w and $ffff);
 
   cl := reducedChunks;
@@ -869,10 +904,17 @@ begin
     piggyCodes[iChunk].Code := cl[iChunk].reducedChunk.index;
     piggyCodes[iChunk].ExtraBits := Ord(cl[iChunk].dstNegative) or (Ord(cl[iChunk].dstReversed) shl 1);
     piggyCodes[iChunk].ExtraBitCount := 2;
+
     if iChunk mod (encoder.ChunksPerAttenuation * encoder.ChannelCount) = 0 then
     begin
       piggyCodes[iChunk].ExtraBits := (piggyCodes[iChunk].ExtraBits shl CMaxAttenuationBits) or cl[iChunk].dstAttenuation;
       piggyCodes[iChunk].ExtraBitCount += CMaxAttenuationBits;
+
+      if iChunk mod (encoder.AttenuationsPerAttenuationLaw * encoder.ChunksPerAttenuation * encoder.ChannelCount) = 0 then
+      begin
+        piggyCodes[iChunk].ExtraBits := (piggyCodes[iChunk].ExtraBits shl CMaxAttenuationLawDiviverBits) or cl[iChunk].dstAttenuationLawDivider;
+        piggyCodes[iChunk].ExtraBitCount += CMaxAttenuationLawDiviverBits;
+      end;
     end;
   end;
 
@@ -911,7 +953,7 @@ begin
 
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
-      delta := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, encoder.ChunkSize - 1 - iSample, iSample)], encoder.ChunkBitDepth, chunk.dstAttenuation, chunk.dstNegative, AttenuationLaw);
+      delta := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, encoder.ChunkSize - 1 - iSample, iSample)], encoder.ChunkBitDepth, chunk.dstAttenuation, chunk.dstNegative, chunk.dstAttenuationLaw);
       smp[chunk.channel] += delta;
 
       if InRange(pos[chunk.channel], 0, High(dstData[chunk.channel])) then
@@ -1048,11 +1090,12 @@ end;
 procedure TEncoder.PrepareFrames;
 const
   CAttenuationMilliseconds = 2.0;
+  CAttenuationLawMilliseconds = 40.0;
   CVariableCodingRatio = 0.7;
 var
   j, i, k, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
-  fixedCost, chunksCost, indexingCost: Double;
+  headerCost, chunksCost, indexingCost: Double;
   avgPower, totalPower, perFramePower, curPower, smp: Double;
 begin
   WriteLn('[PrepareFrames]');
@@ -1061,6 +1104,7 @@ begin
 
   BlockSampleCount := ChunkSize - ChunkBlend;
   ChunksPerAttenuation := Round(SampleRate * CAttenuationMilliseconds / (1000.0 * ChunkSize));
+  AttenuationsPerAttenuationLaw := Round(SampleRate * CAttenuationLawMilliseconds / (1000.0 * ChunkSize * ChunksPerAttenuation));
 
   // ensure srcData ends on a full block
   psc := SampleCount;
@@ -1080,19 +1124,29 @@ begin
     writeln('ProjectedByteSize = ', ProjectedByteSize);
   end;
 
-  FrameCount := ceil(SampleCount / (SampleRate * (FrameLength / 1000)));
+  FrameCount := Max(1, ceil(SampleCount / (SampleRate * (FrameLength / 1000))));
 
   Inc(ChunksPerFrame);
   repeat
     Dec(ChunksPerFrame);
 
-    fixedCost := 0 {no header besides frame};
+    indexingCost :=
+      (SampleCount * ChannelCount * (
+        (Log2(ChunksPerFrame) + Log2(TPiggyCoder.CMaxCodingCount) + 1) * CVariableCodingRatio +
+        1 {dstNegative} + 1 {dstReversed} +
+        CMaxAttenuationBits / (ChunksPerAttenuation * ChannelCount) +
+        CMaxAttenuationLawDiviverBits / (AttenuationsPerAttenuationLaw * ChunksPerAttenuation * ChannelCount)
+      )) / (8 {bytes -> bits} * (ChunkSize - ChunkBlend));
 
-    indexingCost := (SampleCount * ChannelCount * ((Log2(ChunksPerFrame) + Log2(TPiggyCoder.CMaxCodingCount)) * CVariableCodingRatio + 1 + 1 {dstNegative} + 1 {dstReversed} + CMaxAttenuationBits / (ChunksPerAttenuation * ChannelCount))) / (8 {bytes -> bits} * (ChunkSize - ChunkBlend));
+    chunksCost :=
+      (ChunksPerFrame * ChunkSize) * ChunkBitDepth * FrameCount / 8;
 
-    chunksCost := (ChunksPerFrame * ChunkSize) * ChunkBitDepth / 8 + (5 * SizeOf(Word) + SizeOf(Cardinal) + SizeOf(Cardinal) + ChannelCount * SizeOf(Word) + TPiggyCoder.CMaxCodingCount * SizeOf(Byte)) {frame header};
+    headerCost :=
+      4 * SizeOf(Word) + SizeOf(Cardinal) + SizeOf(Cardinal) +
+      ChannelCount * SizeOf(Word) +
+      TPiggyCoder.CMaxCodingCount * SizeOf(Byte);
 
-    tentativeByteSize := Round(fixedCost + indexingCost + FrameCount * chunksCost);
+    tentativeByteSize := Round(headerCost + indexingCost + chunksCost);
 
   until (tentativeByteSize <= ProjectedByteSize) or (ChunksPerFrame <= 1);
 
@@ -1175,14 +1229,14 @@ end;
 
 procedure TEncoder.MakeFrames;
 
-  procedure DoFrame(Index: PtrInt; Data: Pointer);
+  procedure DoAttLaw(Index: PtrInt; Data: Pointer);
   var
     frm: TFrame;
   begin
     frm := frames[Index];
 
-    frm.FindAttenuationLawDivider;
     frm.MakeChunks;
+    frm.FindAttenuationLawDivider;
     frm.ComputeAttenuations;
     frm.Reduce;
     Write('.');
@@ -1194,7 +1248,7 @@ procedure TEncoder.MakeFrames;
 begin
   WriteLn('[MakeFrames]');
 
-  TMTPool.DoStandaloneLocalProc(@DoFrame, 0, FrameCount - 1, NumberOfProcessors);
+  TMTPool.DoStandaloneLocalProc(@DoAttLaw, 0, FrameCount - 1, NumberOfProcessors);
   WriteLn;
 end;
 
@@ -1245,11 +1299,12 @@ begin
   TrebleBoost := False;
   VariableFrameSizeRatio := 1.0;
   ChunkBlend := 0;
-  FrameLength := 4000; // in ms
+  FrameLength := Infinity; // in ms
   PythonReduce := False;
   Precision := 3;
   ThreadsPerFrame := NumberOfProcessors;
   ChunksPerAttenuation := 16;
+  AttenuationsPerAttenuationLaw := 16;
 
   ChunksPerFrame := 4096;
   BandTransFactor := 1 / 256;
@@ -1449,15 +1504,15 @@ begin
   Result := sqrt(Result / Length(dctA));
 end;
 
-class function TEncoder.CompareManhattan(const dctA, dctB: TDoubleDynArray): Double;
+class function TEncoder.CompareMuLawManhattan(const dctA, dctB: TDoubleDynArray): Double;
 var
   i: Integer;
 begin
   Assert(Length(dctA) = Length(dctB));
-  Result := 0.0;
 
+  Result := 0.0;
   for i := 0 to High(dctA) do
-    Result += Abs(dctA[i] - dctB[i]);
+    Result += Abs(muLaw(dctA[i]) - muLaw(dctB[i]));
 
   Result := Result / Length(dctA);
 end;
@@ -1496,11 +1551,11 @@ begin
   for j := 0 to High(smpRef) do
     for i := 0 to High(smpRef[0]) do
     begin
-      rr[j * Length(smpRef[0]) + i] := smpRef[j, i];
-      rt[j * Length(smpRef[0]) + i] := smpTst[j, i];
+      rr[j * Length(smpRef[0]) + i] := makeFloatSample(smpRef[j, i]);
+      rt[j * Length(smpRef[0]) + i] := makeFloatSample(smpTst[j, i]);
     end;
 
-  Result := CompareManhattan(rr, rt);
+  Result := CompareMuLawManhattan(rr, rt) * High(SmallInt);
 end;
 
 class procedure TEncoder.createWAV(channels: word; resolution: word; rate: longint; fn: string; const data: TSmallIntDynArray);

@@ -115,6 +115,7 @@ function DivDef(x, y, def: Double): Double;inline;
 function NanDef(x, def: Double): Double; inline;
 
 function lerp(x, y, alpha: Double): Double; inline;
+function muLaw(x: Double): Double; inline;
 
 function NumberOfProcessors: Integer;
 function HalfNumberOfProcessors: Integer;
@@ -302,6 +303,13 @@ end;
 function lerp(x, y, alpha: Double): Double;
 begin
   Result := x + (y - x) * alpha;
+end;
+
+function muLaw(x: Double): Double;
+const
+  CMu = 255.0;
+begin
+  Result := Sign(x) * Ln(1.0 + CMu * Abs(x)) / Ln(1.0 + CMu);
 end;
 
 function NumberOfProcessors: Integer;
