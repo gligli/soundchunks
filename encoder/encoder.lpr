@@ -1199,14 +1199,14 @@ begin
   TrebleBoost := False;
   VariableFrameSizeRatio := 1.0;
   ChunkBlend := 0;
-  FrameLength := Infinity; // in ms
+  FrameLength := 8000; // in ms
   PythonReduce := False;
   Precision := 3;
   ThreadsPerFrame := NumberOfProcessors;
   ChunksPerAttenuation := 16;
   AttenuationsPerAttenuationLaw := 16;
 
-  ChunksPerFrame := 4096;
+  ChunksPerFrame := 8192;
 
   frames := TFrameList.Create;
 end;
