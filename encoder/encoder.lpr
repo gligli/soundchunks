@@ -8,9 +8,9 @@ uses
 
 const
   CStreamVersion = 4;
-  CMaxAttenuationBits = 6;
+  CMaxAttenuationBits = 5;
   CMaxAttenuation = (1 shl CMaxAttenuationBits) - 1;
-  CMaxAttenuationLawDiviverBits = 8;
+  CMaxAttenuationLawDiviverBits = 7;
   CMaxAttenuationLawDiviver = (1 shl CMaxAttenuationLawDiviverBits) - 1;
   CMaxChunksPerFrame = 65536;
   CAttenuationLawNumerator = 1;
@@ -1037,7 +1037,7 @@ procedure TEncoder.PrepareFrames;
 const
   CAttenuationMilliseconds = 2.0;
   CAttenuationLawMilliseconds = 40.0;
-  CVariableCodingRatio = 0.7;
+  CVariableCodingRatio = 0.8;
 var
   j, i, k, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
@@ -1207,7 +1207,7 @@ begin
   TrebleBoost := False;
   VariableFrameSizeRatio := 1.0;
   ChunkBlend := 0;
-  FrameLength := 8000; // in ms
+  FrameLength := 10000; // in ms
   PythonReduce := False;
   Precision := 3;
   ChunksPerAttenuation := 16;
@@ -1500,7 +1500,7 @@ begin
     begin
       WriteLn('Usage: ', ExtractFileName(ParamStr(0)) + ' <source file> <dest file> [options]');
       Writeln('Main options:');
-      WriteLn(#9'-br'#9'encoder bit rate in kilobits/second; example: "-br250"');
+      WriteLn(#9'-br'#9'encoder bit rate in kilobits/second; example: "-br280"');
       WriteLn(#9'-vfr'#9'RMS power based variable frame size ratio (0.0-1.0); default: "-vfr1.0"');
       WriteLn(#9'-fl'#9'(Average) frame length in milliseconds; default: "-fl4000"');
       WriteLn(#9'-v'#9'verbose mode');
