@@ -3,17 +3,17 @@ program decoder;
 uses Types, SysUtils, Classes, Math, extern;
 
 const
+  CDecodedStreamVersion = 4;
+
   CAttrShift = 15;
   CAttrMul = round((1 shl CAttrShift) * (High(SmallInt) / 2047));
-  CMaxAttenuation = 15;
+
   CAttenuationLawNumerator = 1;
-  CVariableCodingHeaderSize = 2;
-  CVariableCodingBlockSize = 3;
-  CPiggyMaxCodingCount = 4;
-
-var
-  GAttenuationLookup : array[0 .. CMaxAttenuation] of Integer;
-
+  CPiggyCodingHeaderSize = 2;
+  CPiggyCodingCount = 4;
+  CMaxAttenuationBits = 5;
+  CMaxAttenuation = (1 shl CMaxAttenuationBits) - 1;
+  CMaxAttenuationLawDiviverBits = 7;
 
   function CreateWAVHeader(channels: word; resolution: word; rate, size: longint): TWavHeader;
   var
@@ -38,16 +38,18 @@ var
 
   procedure GSCUnpack(ASourceStream, ADestStream: TStream);
   var
-    iChunk, iAttenuation, iSample, iChannel, iVariableCoding, b, s1, s2, bitCount, variableCodingHeader, delta, finalSample, clippingErrors: Integer;
+    iChunk, iAttenuation, iSample, iChannel, iVariableCoding, cpaCounter, apalCounter: Integer;
+    bitCount, variableCodingHeader, chunkAttenuation, attenuationLawDivider, finalSample, clippingErrors: Integer;
+    delta, b, s1, s2: Integer;
     w: Word;
     channelSample: TIntegerDynArray;
     chunkIndex: TIntegerDynArray;
     chunkNegative, chunkReversed: TBooleanDynArray;
     StreamVersion, ChannelCount, ChunkBitDepth, ChunkSize, ChunkCount: Integer;
-    FrameLength, SampleRate, ChunkBlend, AttenuationDivider: Integer;
+    FrameLength, SampleRate, ChunkBlend, ChunksPerAttenuation, AttenuationsPerAttenuationLaw: Integer;
     Chunks: TSmallIntDynArray2;
-    Attenuations: TByteDynArray;
-    piggyCodingBits: array[0 .. CPiggyMaxCodingCount - 1] of Byte;
+    piggyCodingBits: array[0 .. CPiggyCodingCount - 1] of Byte;
+    attenuationLookup : array[0 .. CMaxAttenuation] of Integer;
     memStream: TMemoryStream;
     law, lawAcc: Double;
     bits: Cardinal;
@@ -70,9 +72,9 @@ var
       end;
     end;
 
-    function Attenuate(ASample, AChunkIdx: Integer): SmallInt;
+    function Attenuate(ASample, AAttenuation: Integer): Integer;
     begin
-      Result := SarLongint(ASample * GAttenuationLookup[Attenuations[AChunkIdx]] + (1 shl (CAttrShift - 1)), CAttrShift);
+      Result := SarLongint(ASample * attenuationLookup[AAttenuation] + (1 shl (CAttrShift - 1)), CAttrShift);
     end;
 
   begin
@@ -86,23 +88,14 @@ var
 
         StreamVersion := ASourceStream.ReadByte;
         ChannelCount := ASourceStream.ReadByte;
-        ChunkCount := ASourceStream.ReadWord and $1fff;
+        ChunkCount := ASourceStream.ReadWord;
         ChunkBitDepth := ASourceStream.ReadByte;
         ChunkSize := ASourceStream.ReadByte;
         SampleRate := ASourceStream.ReadDWord;
         ChunkBlend := SampleRate shr 24;
         SampleRate := SampleRate and $ffffff;
-        AttenuationDivider := ASourceStream.ReadWord;
-
-        // compute attenuation law from AttenuationDivider
-
-        law := CAttenuationLawNumerator / AttenuationDivider;
-        lawAcc := 1.0;
-        for iAttenuation := 0 to CMaxAttenuation do
-        begin
-          lawAcc += law * iAttenuation;
-          GAttenuationLookup[iAttenuation] := round(CAttrMul / lawAcc);
-        end;
+        ChunksPerAttenuation := ASourceStream.ReadByte * ChannelCount;
+        AttenuationsPerAttenuationLaw := ASourceStream.ReadByte;
 
         if memStream.Position = 0 then
         begin
@@ -114,25 +107,10 @@ var
           writeln('ChunkBlend = ', ChunkBlend);
         end;
 
+        Assert(StreamVersion = CDecodedStreamVersion, 'StreamVersion not supported');
         Assert(ChunkBlend = 0, 'ChunkBlend not supported');
 
         SetLength(Chunks, ChunkCount, ChunkSize);
-        SetLength(Attenuations, ChunkCount);
-
-        // depack Attenuations
-
-        for iChunk := 0 to ChunkCount div 2 - 1 do
-        begin
-          b := ASourceStream.ReadByte;
-          Attenuations[iChunk * 2 + 0] := (b and $f0) shr 4;
-          Attenuations[iChunk * 2 + 1] := (b and $0f);
-        end;
-
-        if Odd(ChunkCount) then
-        begin
-          b := ASourceStream.ReadByte;
-          Attenuations[ChunkCount - 1] := (b and $f0) shr 4;
-        end;
 
         // depack Chunks
 
@@ -142,7 +120,7 @@ var
               for iSample := 0 to ChunkSize - 1 do
               begin
                 b := ASourceStream.ReadByte;
-                Chunks[iChunk, iSample] := Attenuate((b + Low(ShortInt)) * 2047 div High(ShortInt), iChunk);
+                Chunks[iChunk, iSample] := (b + Low(ShortInt)) * 2047 div High(ShortInt);
               end;
           12:
             for iChunk := 0 to ChunkCount - 1 do
@@ -153,8 +131,8 @@ var
                 s1 := Integer(ASourceStream.ReadByte) or ((b and $f0) shl 4);
                 s2 := Integer(ASourceStream.ReadByte) or ((b and $0f) shl 8);
 
-                Chunks[iChunk, iSample * 2 + 0] := Attenuate(s1 - 2048, iChunk);
-                Chunks[iChunk, iSample * 2 + 1] := Attenuate(s2 - 2048, iChunk);
+                Chunks[iChunk, iSample * 2 + 0] := s1 - 2048;
+                Chunks[iChunk, iSample * 2 + 1] := s2 - 2048;
               end;
 
               if Odd(ChunkSize) then
@@ -162,7 +140,7 @@ var
                 b := ASourceStream.ReadByte;
                 s1 := Integer(ASourceStream.ReadByte) or ((b and $f0) shl 4);
 
-                Chunks[iChunk, ChunkSize - 1] := Attenuate(s1 - 2048, iChunk);
+                Chunks[iChunk, ChunkSize - 1] := s1 - 2048;
               end;
             end;
           else
@@ -178,72 +156,81 @@ var
 
         FrameLength := ASourceStream.ReadDWord;
 
-        if StreamVersion > 1 then
-          for iChannel := 0 to ChannelCount - 1 do
-            channelSample[iChannel] := SmallInt(ASourceStream.ReadWord);
+        for iChannel := 0 to ChannelCount - 1 do
+          channelSample[iChannel] := SmallInt(ASourceStream.ReadWord);
 
-        if StreamVersion > 2 then
-          for iVariableCoding := 0 to CPiggyMaxCodingCount - 1 do
-            piggyCodingBits[iVariableCoding] := ASourceStream.ReadByte;
+        for iVariableCoding := 0 to CPiggyCodingCount - 1 do
+          piggyCodingBits[iVariableCoding] := ASourceStream.ReadByte;
 
         bits := 0;
         bitCount := 0;
         variableCodingHeader := -1;
+        chunkAttenuation := 0;
+        cpaCounter := -1;
+        apalCounter := -1;
         for iChunk := 0 to FrameLength - 1 do
         begin
           for iChannel := 0 to ChannelCount - 1 do
           begin
+            Dec(cpaCounter);
+            if cpaCounter <= 0 then
+            begin
+              FillBits;
+
+              Dec(apalCounter);
+              if apalCounter <= 0 then
+              begin
+                apalCounter := AttenuationsPerAttenuationLaw;
+                attenuationLawDivider := GetBits(CMaxAttenuationLawDiviverBits);
+
+                // compute chunkAttenuation law from attenuationLawDivider
+                law := CAttenuationLawNumerator / attenuationLawDivider;
+                lawAcc := 1.0;
+                for iAttenuation := 0 to CMaxAttenuation do
+                begin
+                  lawAcc += law * iAttenuation;
+                  attenuationLookup[iAttenuation] := round(CAttrMul / lawAcc);
+                end;
+              end;
+
+              cpaCounter := ChunksPerAttenuation;
+              chunkAttenuation := GetBits(CMaxAttenuationBits);
+            end;
+
             FillBits;
 
             chunkNegative[iChannel] := GetBits(1) <> 0;
-
-            if StreamVersion > 0 then
-              chunkReversed[iChannel] := GetBits(1) <> 0; // flag starting version 1
+            chunkReversed[iChannel] := GetBits(1) <> 0;
 
             if GetBits(1) <> 0 then // has new header?
-              variableCodingHeader := GetBits(CVariableCodingHeaderSize);
+              variableCodingHeader := GetBits(CPiggyCodingHeaderSize);
 
             FillBits;
 
             chunkIndex[iChannel] := 0;
-            if StreamVersion > 2 then
-            begin
-              for iVariableCoding := 0 to variableCodingHeader - 1 do
-                chunkIndex[iChannel] += 1 shl piggyCodingBits[iVariableCoding];
-              chunkIndex[iChannel] += GetBits(piggyCodingBits[variableCodingHeader]);
-            end
-            else
-            begin
-              for iVariableCoding := 0 to variableCodingHeader do
-                chunkIndex[iChannel] := (chunkIndex[iChannel] shl CVariableCodingBlockSize) or GetBits(CVariableCodingBlockSize);
-            end;
+            for iVariableCoding := 0 to variableCodingHeader - 1 do
+              chunkIndex[iChannel] += 1 shl piggyCodingBits[iVariableCoding];
+            chunkIndex[iChannel] += GetBits(piggyCodingBits[variableCodingHeader]);
           end;
 
           for iSample := 0 to ChunkSize - 1 do
             for iChannel := 0 to ChannelCount - 1 do
             begin
               delta := Chunks[chunkIndex[iChannel], IfThen(chunkReversed[iChannel], ChunkSize - 1 - iSample, iSample)];
+              delta := Attenuate(delta, chunkAttenuation);
               if chunkNegative[iChannel] then
                 delta := -delta;
 
-              if StreamVersion > 1 then
-              begin
-                channelSample[iChannel] += delta;
+              channelSample[iChannel] += delta;
 
-                finalSample := channelSample[iChannel];
-                if not InRange(finalSample, Low(SmallInt), High(SmallInt)) then
-                begin
-                  Inc(clippingErrors);
-                  finalSample := EnsureRange(finalSample, Low(SmallInt), High(SmallInt));
-                end;
-
-                memStream.WriteWord(Word(finalSample));
-              end
-              else
+              finalSample := channelSample[iChannel];
+              if not InRange(finalSample, Low(SmallInt), High(SmallInt)) then
               begin
-                Assert(InRange(delta, Low(SmallInt), High(SmallInt)));
-                memStream.WriteWord(Word(delta));
+                Inc(clippingErrors);
+                finalSample := EnsureRange(finalSample, Low(SmallInt), High(SmallInt));
               end;
+
+              memStream.WriteWord(Word(finalSample));
             end;
         end;
 
@@ -259,7 +246,6 @@ var
       memStream.Seek(0, soFromBeginning);
       ADestStream.Write(CreateWAVHeader(ChannelCount, 16, SampleRate, memStream.Size), SizeOf(TWavHeader));
       ADestStream.CopyFrom(memStream, memStream.Size);
-
 
       if clippingErrors > 0 then
       begin

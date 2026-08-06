@@ -246,7 +246,7 @@ begin
   try
     bestSize := High(Integer);
 
-    for iCB0 := 1 to codesBitCount do
+    for iCB0 := 0 to codesBitCount do
       for iCB1 := iCB0 to codesBitCount do
         for iCB2 := iCB1 to codesBitCount do
           for iCB3 := iCB2 to codesBitCount do
@@ -259,7 +259,7 @@ begin
             for iCodingBits := 0 to CMaxCodingCount - 1 do
               valuesCoded += 1 shl locCodingBits[iCodingBits];
 
-            if valuesCoded < highestCode then
+            if valuesCoded <= highestCode then
               Continue;
 
             InternalRender(locCodingBits, ms);
@@ -284,7 +284,7 @@ end;
 procedure TPiggyCoder.InternalRender(const ACodingBits: array of Byte; AStream: TStream);
 var
   iCode, iCodingBits, itemBitCnt, overallBitCnt, codeValue, codeBitsLimit, prevCodingBits: Integer;
-  itemBits, overallBits: UInt64;
+  itemBits, overallBits: Cardinal;
 begin
   for iCodingBits := 0 to CMaxCodingCount - 1 do
     AStream.WriteByte(ACodingBits[iCodingBits]);
@@ -1527,7 +1527,7 @@ begin
       enc.FrameLength := Max(ParamValue('-fl', enc.FrameLength), 1.0);
       enc.ChunkBitDepth := EnsureRange(round(ParamValue('-cbd', enc.ChunkBitDepth)), 1, 16);
       enc.ChunkSize := round(ParamValue('-cs', enc.ChunkSize));
-      enc.ChunksPerFrame := EnsureRange(round(ParamValue('-cpf', enc.ChunksPerFrame)), 256, CMaxChunksPerFrame);
+      enc.ChunksPerFrame := EnsureRange(round(ParamValue('-cpf', enc.ChunksPerFrame)), 1, CMaxChunksPerFrame);
       enc.Verbose := HasParam('-v');
       enc.ChunkBlend := EnsureRange(round(ParamValue('-cb', enc.ChunkBlend)), 0, enc.ChunkSize div 2);
       enc.PythonReduce := HasParam('-py');
