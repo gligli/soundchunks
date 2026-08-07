@@ -5,8 +5,8 @@ uses Types, SysUtils, Classes, Math, extern;
 const
   CDecodedStreamVersion = 4;
 
-  CAttrShift = 15;
-  CAttrMul = round((1 shl CAttrShift) * (High(SmallInt) / 2047));
+  CAttrShift = 16;
+  CAttrMul: array[Boolean{12 bits?}] of Integer = ((1 shl (CAttrShift + (16 - 8))) - 1, (1 shl (CAttrShift + (16 - 12))) - 1);
 
   CAttenuationLawNumerator = 1;
   CPiggyCodingHeaderSize = 2;
@@ -120,7 +120,7 @@ const
               for iSample := 0 to ChunkSize - 1 do
               begin
                 b := ASourceStream.ReadByte;
-                Chunks[iChunk, iSample] := (b + Low(ShortInt)) * 2047 div High(ShortInt);
+                Chunks[iChunk, iSample] := b + Low(ShortInt);
               end;
           12:
             for iChunk := 0 to ChunkCount - 1 do
@@ -189,7 +189,7 @@ const
                 for iAttenuation := 0 to CMaxAttenuation do
                 begin
                   lawAcc += law * iAttenuation;
-                  attenuationLookup[iAttenuation] := round(CAttrMul / lawAcc);
+                  attenuationLookup[iAttenuation] := round(CAttrMul[ChunkBitDepth = 12] / lawAcc);
                 end;
               end;
 

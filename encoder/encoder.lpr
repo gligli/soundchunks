@@ -155,7 +155,6 @@ type
 
     frames: TFrameList;
 
-    class function simpleRound(smp: Double): Integer;
     class function make16BitSample(smp: Double): SmallInt;
     class function makeOutputSample(smp: Double; OutBitDepth, Attenuation: Integer; Negative: Boolean; Law: Double): TOutputSample;
     class function makeFloatSample(smp: SmallInt): Double;
@@ -246,7 +245,7 @@ begin
   try
     bestSize := High(Integer);
 
-    for iCB0 := 0 to codesBitCount do
+    for iCB0 := 1 to codesBitCount do
       for iCB1 := iCB0 to codesBitCount do
         for iCB2 := iCB1 to codesBitCount do
           for iCB3 := iCB2 to codesBitCount do
@@ -255,7 +254,7 @@ begin
 
             locCodingBits[0] := iCB0; locCodingBits[1] := iCB1; locCodingBits[2] := iCB2; locCodingBits[3] := iCB3;
 
-            valuesCoded := 0;
+            valuesCoded := -1;
             for iCodingBits := 0 to CMaxCodingCount - 1 do
               valuesCoded += 1 shl locCodingBits[iCodingBits];
 
@@ -284,7 +283,8 @@ end;
 procedure TPiggyCoder.InternalRender(const ACodingBits: array of Byte; AStream: TStream);
 var
   iCode, iCodingBits, itemBitCnt, overallBitCnt, codeValue, codeBitsLimit, prevCodingBits: Integer;
-  itemBits, overallBits: Cardinal;
+  itemBits, overallBits: UInt64;
+  coded: Boolean;
 begin
   for iCodingBits := 0 to CMaxCodingCount - 1 do
     AStream.WriteByte(ACodingBits[iCodingBits]);
@@ -304,6 +304,7 @@ begin
       itemBitCnt += codes[iCode].ExtraBitCount;
     end;
 
+    coded := False;
     codeValue := codes[iCode].Code;
     for iCodingBits := 0 to CMaxCodingCount - 1 do
     begin
@@ -330,11 +331,13 @@ begin
         itemBits := itemBits or (codeValue shl itemBitCnt);
         itemBitCnt += ACodingBits[iCodingBits];
 
+        coded := True;
         Break;
       end;
 
       codeValue -= codeBitsLimit;
     end;
+    Assert(coded);
 
     overallBits := overallBits or (itemBits shl overallBitCnt);
     overallBitCnt += itemBitCnt;
@@ -1037,7 +1040,7 @@ procedure TEncoder.PrepareFrames;
 const
   CAttenuationMilliseconds = 2.0;
   CAttenuationLawMilliseconds = 40.0;
-  CVariableCodingRatio = 0.8;
+  CVariableCodingRatio = 0.75;
 var
   j, i, k, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
@@ -1250,14 +1253,9 @@ begin
   Result := iDivDef(NumberOfProcessors - 1, FramesLeft, 1) + 1;
 end;
 
-class function TEncoder.simpleRound(smp: Double): Integer;
-begin
-  Result := Trunc(smp + Sign(smp) * 0.5);
-end;
-
 class function TEncoder.make16BitSample(smp: Double): SmallInt;
 begin
-  Result := EnsureRange(simpleRound(smp * High(SmallInt)), Low(SmallInt), High(SmallInt));
+  Result := EnsureRange(Round(smp * High(SmallInt)), Low(SmallInt), High(SmallInt));
 end;
 
 class function TEncoder.makeFloatSample(smp: SmallInt): Double;
@@ -1277,7 +1275,7 @@ begin
   obd := (1 shl (OutBitDepth - 1)) - 1;
   smp16 := smp * obd * coeff;
   if Negative then smp16 := -smp16;
-  Result.AsInt := EnsureRange(simpleRound(smp16), -obd, obd);
+  Result.AsInt := EnsureRange(Round(smp16), -obd, obd);
   Result.AsDouble := EnsureRange(smp16, -obd, obd);
 end;
 
