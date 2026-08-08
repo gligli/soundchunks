@@ -9,8 +9,8 @@ const
   CAttrMul: array[Boolean{12 bits?}] of Integer = ((1 shl (CAttrShift + (16 - 8))) - 1, (1 shl (CAttrShift + (16 - 12))) - 1);
 
   CAttenuationLawNumerator = 1;
-  CPiggyCodingHeaderSize = 2;
-  CPiggyCodingCount = 4;
+  CPiggyCodingBits = 3;
+  CPiggyCodingCount = 1 shl CPiggyCodingBits;
   CMaxAttenuationBits = 5;
   CMaxAttenuation = (1 shl CMaxAttenuationBits) - 1;
   CMaxAttenuationLawDiviverBits = 7;
@@ -203,7 +203,7 @@ const
             chunkReversed[iChannel] := GetBits(1) <> 0;
 
             if GetBits(1) <> 0 then // has new header?
-              variableCodingHeader := GetBits(CPiggyCodingHeaderSize);
+              variableCodingHeader := GetBits(CPiggyCodingBits);
 
             FillBits;
 

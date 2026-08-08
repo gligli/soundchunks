@@ -9,8 +9,7 @@
         <Filename Value="decoder.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="181"/>
-        <CursorPos X="23" Y="206"/>
+        <CursorPos X="23" Y="13"/>
         <UsageCount Value="62"/>
         <Loaded Value="True"/>
       </Unit>
@@ -30,22 +29,6 @@
       </Unit>
     </Units>
     <JumpHistory HistoryIndex="29">
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="170" Column="11" TopLine="135"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="41" Column="86" TopLine="13"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="186" Column="57" TopLine="156"/>
-      </Position>
-      <Position>
-        <Filename Value="decoder.lpr"/>
-        <Caret Line="192" Column="64" TopLine="156"/>
-      </Position>
       <Position>
         <Filename Value="decoder.lpr"/>
         <Caret Line="9" Column="74"/>
@@ -149,6 +132,22 @@
         <Filename Value="decoder.lpr"/>
         <Caret Line="218" Column="31" TopLine="175"/>
       </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="206" Column="23" TopLine="100"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="13" Column="3" TopLine="13"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="12" Column="12"/>
+      </Position>
+      <Position>
+        <Filename Value="decoder.lpr"/>
+        <Caret Line="162" Column="45" TopLine="141"/>
+      </Position>
     </JumpHistory>
     <RunParams>
       <FormatVersion Value="2"/>
@@ -156,7 +155,6 @@
         <Mode Name="default">
           <local>
             <CommandLineParams Value="..\out2.gsc ..\out2dec.wav"/>
-            <LaunchingApplication PathPlusParams="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
           </local>
         </Mode>
       </Modes>

@@ -24,7 +24,7 @@ type
 
   TPiggyCoder = class
   const
-    CMaxCodingBits = 2;
+    CMaxCodingBits = 3;
     CMaxCodingCount = 1 shl CMaxCodingBits;
   type
     TCode = record
@@ -49,7 +49,15 @@ type
 
   { TChunk }
 
-  TChunkList = specialize TFPGObjectList<TChunk>;
+  TChunkList = class(specialize TFPGObjectList<TChunk>)
+  private
+    function GetDeltaDist: UInt64;
+    function InternalSortDelta: Cardinal;
+    procedure ExchangeChunks(AIndex1, AIndex2: Integer);
+  public
+    chunkRefsRef: TChunkList;
+    procedure SortOptimizeDelta;
+  end;
 
   TChunk = class
   private
@@ -215,6 +223,86 @@ begin
   Result := StrToFloatDef(copy(ParamStr(idx), Length(p) + 1), def);
 end;
 
+function TChunkList.GetDeltaDist: UInt64;
+var
+  iChunkRef, chunkIdx, prevChunkIdx: Integer;
+  chunk: TChunk;
+begin
+  chunk := chunkRefsRef[0].reducedChunk;
+  chunkIdx := chunk.index;
+
+  Result := chunkIdx;
+
+  prevChunkIdx := chunkIdx;
+
+  for iChunkRef := 1 to chunkRefsRef.Count - 1 do
+  begin
+    chunk := chunkRefsRef[iChunkRef].reducedChunk;
+    chunkIdx := chunk.index;
+
+    Result += Abs(chunkIdx - prevChunkIdx);
+
+    prevChunkIdx := chunkIdx;
+  end;
+end;
+
+function TChunkList.InternalSortDelta: Cardinal;
+var
+  I: Integer;
+  cmp: Int64;
+begin
+  Result := 0;
+
+  for I := 1 to Count - 1 do
+  begin
+    cmp := GetDeltaDist;
+
+    ExchangeChunks(I, I - 1);
+
+    cmp := GetDeltaDist - cmp;
+
+    if cmp >= 0 then
+      ExchangeChunks(I, I - 1)
+    else
+      Inc(Result);
+  end;
+end;
+
+procedure TChunkList.ExchangeChunks(AIndex1, AIndex2: Integer);
+begin
+  extern.Exchange(Items[AIndex1].index, Items[AIndex2].index);
+  InternalExchange(AIndex1, AIndex2);
+end;
+
+procedure TChunkList.SortOptimizeDelta;
+var
+  iChunk: Integer;
+  iter: Integer;
+  moves, prevMoves: Cardinal;
+  deltaDist, prevDeltaDist: UInt64;
+begin
+  for iChunk := 0 to Count - 1 do
+    Items[iChunk].index := iChunk;
+
+  deltaDist := High(UInt64);
+  moves := High(Cardinal);
+  iter := 0;
+  repeat
+    prevDeltaDist := deltaDist;
+    deltaDist := GetDeltaDist;
+
+    prevMoves := moves;
+    moves := InternalSortDelta;
+
+    Inc(iter);
+
+    WriteLn(iter:8,deltaDist:12,moves:8);
+  until (moves = 0) or ((moves >= prevMoves) and (deltaDist >= prevDeltaDist));
+
+  for iChunk := 0 to Count - 1 do
+    Items[iChunk].index := iChunk;
+end;
+
 { TPiggyCoder }
 
 constructor TPiggyCoder.Create(const ACodes: TCodeArray; AHighestCode: Integer);
@@ -237,7 +325,7 @@ end;
 
 procedure TPiggyCoder.SolveCodingBits;
 var
-  iCB0, iCB1, iCB2, iCB3, iCodingBits, bestSize, valuesCoded: Integer;
+  iCB0, iCB1, iCB2, iCB3, iCB4, iCB5, iCB6, iCB7, iCodingBits, bestSize, valuesCoded: Integer;
   locCodingBits: array[0 .. CMaxCodingCount - 1] of Byte;
   ms: TMemoryStream;
 begin
@@ -249,26 +337,31 @@ begin
       for iCB1 := iCB0 to codesBitCount do
         for iCB2 := iCB1 to codesBitCount do
           for iCB3 := iCB2 to codesBitCount do
-          begin
-            ms.Position := 0;
+            for iCB4 := iCB3 to codesBitCount do
+              for iCB5 := iCB4 to codesBitCount do
+                for iCB6 := iCB5 to codesBitCount do
+                  for iCB7 := iCB6 to codesBitCount do
+                  begin
+                    ms.Position := 0;
 
-            locCodingBits[0] := iCB0; locCodingBits[1] := iCB1; locCodingBits[2] := iCB2; locCodingBits[3] := iCB3;
+                    locCodingBits[0] := iCB0; locCodingBits[1] := iCB1; locCodingBits[2] := iCB2; locCodingBits[3] := iCB3;
+                    locCodingBits[4] := iCB4; locCodingBits[5] := iCB5; locCodingBits[6] := iCB6; locCodingBits[7] := iCB7;
 
-            valuesCoded := -1;
-            for iCodingBits := 0 to CMaxCodingCount - 1 do
-              valuesCoded += 1 shl locCodingBits[iCodingBits];
+                    valuesCoded := -1;
+                    for iCodingBits := 0 to CMaxCodingCount - 1 do
+                      valuesCoded += 1 shl locCodingBits[iCodingBits];
 
-            if valuesCoded <= highestCode then
-              Continue;
+                    if valuesCoded <= highestCode then
+                      Continue;
 
-            InternalRender(locCodingBits, ms);
+                    InternalRender(locCodingBits, ms);
 
-            if ms.Position < bestSize then
-            begin
-              bestSize := ms.Position;
-              codingBits := locCodingBits;
-            end;
-          end;
+                    if ms.Position < bestSize then
+                    begin
+                      bestSize := ms.Position;
+                      codingBits := locCodingBits;
+                    end;
+                  end;
 
   finally
     ms.Free;
@@ -276,7 +369,10 @@ begin
 end;
 
 procedure TPiggyCoder.Render(AStream: TStream);
+var i: Integer;
 begin
+  for i := 0 to CMaxCodingCount - 1 do
+    Write(codingBits[i]:3);
   InternalRender(codingBits, AStream);
 end;
 
@@ -793,6 +889,9 @@ begin
        reducedChunks.Delete(iChunk);
 
   reducedChunks.Sort(@CompareChunkUseCountInv);
+
+  reducedChunks.chunkRefsRef := chunkRefs;
+  reducedChunks.SortOptimizeDelta;
 
   for iChunk := 0 to reducedChunks.Count - 1 do
     reducedChunks[iChunk].index := iChunk;

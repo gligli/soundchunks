@@ -115,15 +115,13 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128 -pr0"/>
-        <LaunchingApplication PathPlusParams="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
+        <CommandLineParams Value="..\opus_test\mo_b_44_2.wav ..\out1.wav  -d -cs16 -br64"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128 -pr0"/>
-            <LaunchingApplication PathPlusParams="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
+            <CommandLineParams Value="..\opus_test\mo_b_44_2.wav ..\out1.wav  -d -cs16 -br64"/>
           </local>
         </Mode0>
       </Modes>
