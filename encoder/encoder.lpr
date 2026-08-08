@@ -51,10 +51,11 @@ type
 
   TChunkList = class(specialize TFPGObjectList<TChunk>)
   private
-    function GetDeltaDist: UInt64;
+    function GetDeltaDist(AIndex: Integer): UInt64;
     function InternalSortDelta: Cardinal;
     procedure ExchangeChunks(AIndex1, AIndex2: Integer);
   public
+    frame: Integer;
     chunkRefsRef: TChunkList;
     procedure SortOptimizeDelta;
   end;
@@ -71,6 +72,9 @@ type
     dstReversed: Boolean;
     dstAttenuation: Integer;
     dstAttenuationLawDivider: Integer;
+
+    backRefsIdx: Integer;
+    backRefs: TIntegerDynArray;
 
     srcData: TDoubleDynArray;
     dstData: TSmallIntDynArray;
@@ -112,6 +116,7 @@ type
     procedure ComputeAttenuations;
     procedure Reduce;
     procedure Reconstruct;
+    procedure SortOptimizeDelta;
     procedure SaveStream(AStream: TStream);
     procedure MakeDstData;
   end;
@@ -223,26 +228,25 @@ begin
   Result := StrToFloatDef(copy(ParamStr(idx), Length(p) + 1), def);
 end;
 
-function TChunkList.GetDeltaDist: UInt64;
+function TChunkList.GetDeltaDist(AIndex: Integer): UInt64;
 var
-  iChunkRef, chunkIdx, prevChunkIdx: Integer;
+  iBackRef, chunkIdx, prevIdx: Integer;
   chunk: TChunk;
 begin
-  chunk := chunkRefsRef[0].reducedChunk;
-  chunkIdx := chunk.index;
+  Result := 0;
+  chunk := Items[AIndex];
 
-  Result := chunkIdx;
+  prevIdx := 0;
+  chunkIdx := chunk.backRefs[0];
+  if chunkIdx > 0 then // only the first backRef can have index 0 (built beginning to end)
+    prevIdx := chunkRefsRef[chunkIdx - 1].reducedChunk.index;
+  Result += Abs(AIndex -  prevIdx);
 
-  prevChunkIdx := chunkIdx;
-
-  for iChunkRef := 1 to chunkRefsRef.Count - 1 do
+  for iBackRef := 1 to chunk.backRefsIdx - 1 do
   begin
-    chunk := chunkRefsRef[iChunkRef].reducedChunk;
-    chunkIdx := chunk.index;
-
-    Result += Abs(chunkIdx - prevChunkIdx);
-
-    prevChunkIdx := chunkIdx;
+    chunkIdx := chunk.backRefs[iBackRef];
+    prevIdx := chunkRefsRef[chunkIdx - 1].reducedChunk.index;
+    Result += Abs(AIndex -  prevIdx);
   end;
 end;
 
@@ -255,11 +259,11 @@ begin
 
   for I := 1 to Count - 1 do
   begin
-    cmp := GetDeltaDist;
+    cmp := GetDeltaDist(I) + GetDeltaDist(I - 1);
 
     ExchangeChunks(I, I - 1);
 
-    cmp := GetDeltaDist - cmp;
+    cmp := GetDeltaDist(I) + GetDeltaDist(I - 1) - cmp;
 
     if cmp >= 0 then
       ExchangeChunks(I, I - 1)
@@ -276,31 +280,41 @@ end;
 
 procedure TChunkList.SortOptimizeDelta;
 var
-  iChunk: Integer;
-  iter: Integer;
-  moves, prevMoves: Cardinal;
-  deltaDist, prevDeltaDist: UInt64;
+  iChunkRef, iChunk: Integer;
+  moves, movesAcc, iter: Cardinal;
+  chunk: TChunk;
 begin
   for iChunk := 0 to Count - 1 do
-    Items[iChunk].index := iChunk;
+  begin
+    chunk := Items[iChunk];
+    chunk.index := iChunk;
+    SetLength(chunk.backRefs, chunk.useCount);
+  end;
 
-  deltaDist := High(UInt64);
-  moves := High(Cardinal);
+  for iChunkRef := 0 to chunkRefsRef.Count - 1 do
+  begin
+    chunk := chunkRefsRef[iChunkRef];
+    chunk.reducedChunk.backRefs[chunk.reducedChunk.backRefsIdx] := iChunkRef;
+    Inc(chunk.reducedChunk.backRefsIdx);
+  end;
+
   iter := 0;
+  movesAcc := 0;
   repeat
-    prevDeltaDist := deltaDist;
-    deltaDist := GetDeltaDist;
-
-    prevMoves := moves;
     moves := InternalSortDelta;
-
+    movesAcc += moves;
     Inc(iter);
+  until (moves = 0) or (iter > 1000);
 
-    WriteLn(iter:8,deltaDist:12,moves:8);
-  until (moves = 0) or ((moves >= prevMoves) and (deltaDist >= prevDeltaDist));
+  if frame >= 0 then
+    WriteLn('[SortOptimizeDelta] Frame = ', frame:4, ', Moves = ', movesAcc:8);
 
   for iChunk := 0 to Count - 1 do
-    Items[iChunk].index := iChunk;
+  begin
+    chunk := Items[iChunk];
+    chunk.index := iChunk;
+    SetLength(chunk.backRefs, 0);
+  end;
 end;
 
 { TPiggyCoder }
@@ -369,10 +383,7 @@ begin
 end;
 
 procedure TPiggyCoder.Render(AStream: TStream);
-var i: Integer;
 begin
-  for i := 0 to CMaxCodingCount - 1 do
-    Write(codingBits[i]:3);
   InternalRender(codingBits, AStream);
 end;
 
@@ -890,11 +901,15 @@ begin
 
   reducedChunks.Sort(@CompareChunkUseCountInv);
 
-  reducedChunks.chunkRefsRef := chunkRefs;
-  reducedChunks.SortOptimizeDelta;
-
   for iChunk := 0 to reducedChunks.Count - 1 do
     reducedChunks[iChunk].index := iChunk;
+end;
+
+procedure TFrame.SortOptimizeDelta;
+begin
+  reducedChunks.frame := IfThen(encoder.Verbose, index, -1);
+  reducedChunks.chunkRefsRef := chunkRefs;
+  reducedChunks.SortOptimizeDelta;
 end;
 
 procedure TFrame.SaveStream(AStream: TStream);
@@ -1139,7 +1154,7 @@ procedure TEncoder.PrepareFrames;
 const
   CAttenuationMilliseconds = 2.0;
   CAttenuationLawMilliseconds = 40.0;
-  CVariableCodingRatio = 0.75;
+  CVariableCodingRatio = 0.63;
 var
   j, i, k, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
@@ -1286,6 +1301,8 @@ procedure TEncoder.MakeFrames;
     frm.Reduce;
     Write('.');
     frm.Reconstruct;
+    Write('.');
+    frm.SortOptimizeDelta;
     frm.MakeDstData;
     Write('.');
   end;
@@ -1597,14 +1614,14 @@ begin
     begin
       WriteLn('Usage: ', ExtractFileName(ParamStr(0)) + ' <source file> <dest file> [options]');
       Writeln('Main options:');
-      WriteLn(#9'-br'#9'encoder bit rate in kilobits/second; example: "-br280"');
+      WriteLn(#9'-br'#9'encoder bit rate in kilobits/second; example: "-br250"');
       WriteLn(#9'-vfr'#9'RMS power based variable frame size ratio (0.0-1.0); default: "-vfr1.0"');
-      WriteLn(#9'-fl'#9'(Average) frame length in milliseconds; default: "-fl4000"');
+      WriteLn(#9'-fl'#9'(Average) frame length in milliseconds; default: "-fl10000"');
       WriteLn(#9'-v'#9'verbose mode');
       Writeln('Development options:');
       WriteLn(#9'-d'#9'debug mode (outputs decoded WAVs)');
       WriteLn(#9'-cs'#9'chunk size');
-      WriteLn(#9'-cpf'#9'max. chunks per frame (256-65536)');
+      WriteLn(#9'-cpf'#9'max. chunks per frame (1-65536)');
       WriteLn(#9'-cbd'#9'chunk bit depth (8,12)');
       WriteLn(#9'-pr'#9'K-means precision; 0: "lossless" mode');
       WriteLn(#9'-cb'#9'chunk blend');
