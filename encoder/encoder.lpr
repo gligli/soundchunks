@@ -230,24 +230,37 @@ end;
 
 function TChunkList.GetDeltaDist(AIndex: Integer): UInt64;
 var
-  iBackRef, chunkIdx, prevIdx: Integer;
+  iBackRef, chunkRefIdx, prevIdx, nextIdx: Integer;
   chunk: TChunk;
 begin
   Result := 0;
   chunk := Items[AIndex];
 
+  chunkRefIdx := chunk.backRefs[0];
   prevIdx := 0;
-  chunkIdx := chunk.backRefs[0];
-  if chunkIdx > 0 then // only the first backRef can have index 0 (built beginning to end)
-    prevIdx := chunkRefsRef[chunkIdx - 1].reducedChunk.index;
-  Result += Abs(AIndex -  prevIdx);
+  if chunkRefIdx > 0 then // only the first backRef can have index 0 (built beginning to end)
+    prevIdx := chunkRefsRef[chunkRefIdx - 1].reducedChunk.index;
+  nextIdx := 0;
+  if chunkRefIdx < chunk.backRefsIdx - 1 then // the first backRef can also be the last
+    nextIdx := chunkRefsRef[chunkRefIdx + 1].reducedChunk.index;
+  Result += Abs(AIndex -  prevIdx) + Abs(nextIdx -  AIndex);
 
-  for iBackRef := 1 to chunk.backRefsIdx - 1 do
+  for iBackRef := 1 to chunk.backRefsIdx - 2 do
   begin
-    chunkIdx := chunk.backRefs[iBackRef];
-    prevIdx := chunkRefsRef[chunkIdx - 1].reducedChunk.index;
-    Result += Abs(AIndex -  prevIdx);
+    chunkRefIdx := chunk.backRefs[iBackRef];
+    prevIdx := chunkRefsRef[chunkRefIdx - 1].reducedChunk.index;
+    nextIdx := chunkRefsRef[chunkRefIdx + 1].reducedChunk.index;
+    Result += Abs(AIndex -  prevIdx) + Abs(nextIdx -  AIndex);
   end;
+
+  chunkRefIdx := chunk.backRefs[chunk.backRefsIdx - 1];
+  prevIdx := 0;
+  if chunkRefIdx > 0 then // the last backRef can also be the first
+    prevIdx := chunkRefsRef[chunkRefIdx - 1].reducedChunk.index;
+  nextIdx := 0;
+  if chunkRefIdx < chunk.backRefsIdx - 1 then // only the last backRef can have index "chunk.backRefsIdx - 1" (built beginning to end)
+    nextIdx := chunkRefsRef[chunkRefIdx + 1].reducedChunk.index;
+  Result += Abs(AIndex -  prevIdx) + Abs(nextIdx -  AIndex);
 end;
 
 function TChunkList.InternalSortDelta: Cardinal;
