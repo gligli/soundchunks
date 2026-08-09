@@ -12,6 +12,7 @@ const
   CMaxAttenuation = (1 shl CMaxAttenuationBits) - 1;
   CMaxAttenuationLawDiviverBits = 7;
   CMaxAttenuationLawDiviver = (1 shl CMaxAttenuationLawDiviverBits) - 1;
+  CMinChunksPerFrame = 16;
   CMaxChunksPerFrame = 65536;
   CAttenuationLawNumerator = 1;
 
@@ -39,9 +40,9 @@ type
     codes: TCodeArray;
     codesBitCount: Byte;
 
-    procedure InternalRender(const ACodingBits: array of Byte; AStream: TStream);
+    function TestCodingBits(const ACodingBits: array of Byte): UInt64;
   public
-    constructor Create(const ACodes: TCodeArray; AHighestCode: Integer);
+    constructor Create(ACodes: TCodeArray; AHighestCode: Integer);
 
     procedure SolveCodingBits;
     procedure Render(AStream: TStream);
@@ -105,6 +106,8 @@ type
 
     srcFirstSample: TDoubleDynArray;
 
+    dstPiggyCoder: TPiggyCoder;
+
     srcData: TDoubleDynArray2;
     dstData: TDoubleDynArray2;
 
@@ -117,8 +120,10 @@ type
     procedure Reduce;
     procedure Reconstruct;
     procedure SortOptimizeDelta;
-    procedure SaveStream(AStream: TStream);
     procedure MakeDstData;
+    procedure SaveStream(AStream: TStream);
+
+    procedure MakeFrame;
   end;
 
   TFrameList = specialize TFPGObjectList<TFrame>;
@@ -332,7 +337,7 @@ end;
 
 { TPiggyCoder }
 
-constructor TPiggyCoder.Create(const ACodes: TCodeArray; AHighestCode: Integer);
+constructor TPiggyCoder.Create(ACodes: TCodeArray; AHighestCode: Integer);
 var
   iCodingBits: Integer;
   bitBlock, valuesCoded: Integer;
@@ -352,62 +357,78 @@ end;
 
 procedure TPiggyCoder.SolveCodingBits;
 var
-  iCB0, iCB1, iCB2, iCB3, iCB4, iCB5, iCB6, iCB7, iCodingBits, bestSize, valuesCoded: Integer;
+  iCB0, iCB1, iCB2, iCB3, iCB4, iCB5, iCB6, iCB7, iCodingBits, valuesCoded: Integer;
+  bestSize, curSize: UInt64;
   locCodingBits: array[0 .. CMaxCodingCount - 1] of Byte;
-  ms: TMemoryStream;
 begin
-  ms := TMemoryStream.Create;
-  try
-    bestSize := High(Integer);
+  bestSize := High(UInt64);
+  for iCB0 := 1 to codesBitCount do
+    for iCB1 := iCB0 to codesBitCount do
+      for iCB2 := iCB1 to codesBitCount do
+        for iCB3 := iCB2 to codesBitCount do
+          for iCB4 := iCB3 to codesBitCount do
+            for iCB5 := iCB4 to codesBitCount do
+              for iCB6 := iCB5 to codesBitCount do
+                for iCB7 := iCB6 to codesBitCount do
+                begin
+                  locCodingBits[0] := iCB0; locCodingBits[1] := iCB1; locCodingBits[2] := iCB2; locCodingBits[3] := iCB3;
+                  locCodingBits[4] := iCB4; locCodingBits[5] := iCB5; locCodingBits[6] := iCB6; locCodingBits[7] := iCB7;
 
-    for iCB0 := 1 to codesBitCount do
-      for iCB1 := iCB0 to codesBitCount do
-        for iCB2 := iCB1 to codesBitCount do
-          for iCB3 := iCB2 to codesBitCount do
-            for iCB4 := iCB3 to codesBitCount do
-              for iCB5 := iCB4 to codesBitCount do
-                for iCB6 := iCB5 to codesBitCount do
-                  for iCB7 := iCB6 to codesBitCount do
+                  valuesCoded := -1;
+                  for iCodingBits := 0 to CMaxCodingCount - 1 do
+                    valuesCoded += 1 shl locCodingBits[iCodingBits];
+
+                  if (valuesCoded <= highestCode) or (valuesCoded > highestCode shl 1) then
+                    Continue;
+
+                  curSize := TestCodingBits(locCodingBits);
+
+                  if curSize < bestSize then
                   begin
-                    ms.Position := 0;
-
-                    locCodingBits[0] := iCB0; locCodingBits[1] := iCB1; locCodingBits[2] := iCB2; locCodingBits[3] := iCB3;
-                    locCodingBits[4] := iCB4; locCodingBits[5] := iCB5; locCodingBits[6] := iCB6; locCodingBits[7] := iCB7;
-
-                    valuesCoded := -1;
+                    bestSize := curSize;
                     for iCodingBits := 0 to CMaxCodingCount - 1 do
-                      valuesCoded += 1 shl locCodingBits[iCodingBits];
-
-                    if valuesCoded <= highestCode then
-                      Continue;
-
-                    InternalRender(locCodingBits, ms);
-
-                    if ms.Position < bestSize then
-                    begin
-                      bestSize := ms.Position;
-                      codingBits := locCodingBits;
-                    end;
+                      codingBits[iCodingBits] := locCodingBits[iCodingBits];
                   end;
+                end;
+end;
 
-  finally
-    ms.Free;
+function TPiggyCoder.TestCodingBits(const ACodingBits: array of Byte): UInt64;
+var
+  iCode, iCodingBits, codeValue, codeBitsLimit, prevCodingBits: Integer;
+begin
+  // /!\ should be kept synced with TPiggyCoder.Render
+
+  Result := 0;
+  prevCodingBits := -1;
+  for iCode := 0 to High(codes) do
+  begin
+    codeValue := codes[iCode].Code;
+    iCodingBits := 0;
+    repeat
+      codeBitsLimit := 1 shl ACodingBits[iCodingBits];
+      if codeValue < codeBitsLimit then
+        Break;
+      codeValue -= codeBitsLimit;
+      Inc(iCodingBits);
+    until False;
+
+    Result += IfThen(iCodingBits = prevCodingBits, 1, 1 + CMaxCodingBits);
+    Result += ACodingBits[iCodingBits];
+
+    prevCodingBits := iCodingBits;
   end;
 end;
 
 procedure TPiggyCoder.Render(AStream: TStream);
-begin
-  InternalRender(codingBits, AStream);
-end;
-
-procedure TPiggyCoder.InternalRender(const ACodingBits: array of Byte; AStream: TStream);
 var
   iCode, iCodingBits, itemBitCnt, overallBitCnt, codeValue, codeBitsLimit, prevCodingBits: Integer;
   itemBits, overallBits: UInt64;
   coded: Boolean;
 begin
+  // /!\ should be kept synced with TPiggyCoder.TestCodingBits
+
   for iCodingBits := 0 to CMaxCodingCount - 1 do
-    AStream.WriteByte(ACodingBits[iCodingBits]);
+    AStream.WriteByte(codingBits[iCodingBits]);
 
   overallBits := 0;
   overallBitCnt := 0;
@@ -428,7 +449,7 @@ begin
     codeValue := codes[iCode].Code;
     for iCodingBits := 0 to CMaxCodingCount - 1 do
     begin
-      codeBitsLimit := 1 shl ACodingBits[iCodingBits];
+      codeBitsLimit := 1 shl codingBits[iCodingBits];
 
       if codeValue < codeBitsLimit then
       begin
@@ -449,7 +470,7 @@ begin
         end;
 
         itemBits := itemBits or (codeValue shl itemBitCnt);
-        itemBitCnt += ACodingBits[iCodingBits];
+        itemBitCnt += codingBits[iCodingBits];
 
         coded := True;
         Break;
@@ -603,6 +624,7 @@ begin
   chunkRefs.Free;
   reducedChunks.Free;
   finalChunks.Free;
+  dstPiggyCoder.Free;
 
   inherited Destroy;
 end;
@@ -930,8 +952,6 @@ var
   iChunk, iSample, iChannel, s1, s2: Integer;
   w: UInt64;
   cl: TChunkList;
-  piggyCoder: TPiggyCoder;
-  piggyCodes: TPiggyCoder.TCodeArray;
 begin
   Assert(reducedChunks.Count <= CMaxChunksPerFrame);
 
@@ -978,9 +998,7 @@ begin
       Assert(False, 'ChunkBitDepth not supported');
   end;
 
-  cl := finalChunks;
-
-  AStream.WriteDWord(cl.Count div encoder.ChannelCount);
+  AStream.WriteDWord(finalChunks.Count div encoder.ChannelCount);
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
   begin
@@ -988,33 +1006,23 @@ begin
     AStream.WriteWord(w and $ffff);
   end;
 
-  SetLength(piggyCodes, cl.Count);
-  for iChunk := 0 to cl.Count - 1 do
-  begin
-    piggyCodes[iChunk].Code := cl[iChunk].reducedChunk.index;
-    piggyCodes[iChunk].ExtraBits := Ord(cl[iChunk].dstNegative) or (Ord(cl[iChunk].dstReversed) shl 1);
-    piggyCodes[iChunk].ExtraBitCount := 2;
+  dstPiggyCoder.Render(AStream);
+end;
 
-    if iChunk mod (encoder.ChunksPerAttenuation * encoder.ChannelCount) = 0 then
-    begin
-      piggyCodes[iChunk].ExtraBits := (piggyCodes[iChunk].ExtraBits shl CMaxAttenuationBits) or cl[iChunk].dstAttenuation;
-      piggyCodes[iChunk].ExtraBitCount += CMaxAttenuationBits;
-
-      if iChunk mod (encoder.AttenuationsPerAttenuationLaw * encoder.ChunksPerAttenuation * encoder.ChannelCount) = 0 then
-      begin
-        piggyCodes[iChunk].ExtraBits := (piggyCodes[iChunk].ExtraBits shl CMaxAttenuationLawDiviverBits) or cl[iChunk].dstAttenuationLawDivider;
-        piggyCodes[iChunk].ExtraBitCount += CMaxAttenuationLawDiviverBits;
-      end;
-    end;
-  end;
-
-  piggyCoder := TPiggyCoder.Create(piggyCodes, reducedChunks.Count - 1);
-  try
-    piggyCoder.SolveCodingBits;
-    piggyCoder.Render(AStream);
-  finally
-    piggyCoder.Free;
-  end;
+procedure TFrame.MakeFrame;
+begin
+  MakeChunks;
+  FindAttenuationLawDivider;
+  ComputeAttenuations;
+  Write('.');
+  Reduce;
+  Write('.');
+  Reconstruct;
+  Write('.');
+  SortOptimizeDelta;
+  Write('.');
+  MakeDstData;
+  Write('.');
 end;
 
 procedure TFrame.MakeDstData;
@@ -1024,9 +1032,8 @@ var
   delta: Double;
   pos: TIntegerDynArray;
   smp: TDoubleDynArray;
+  piggyCodes: TPiggyCoder.TCodeArray;
 begin
-  //WriteLn('MakeDstData #', index);
-
   SetLength(pos, encoder.ChannelCount);
   SetLength(smp, encoder.ChannelCount);
   SetLength(dstData, encoder.ChannelCount, SampleCount);
@@ -1053,6 +1060,30 @@ begin
 
     Dec(pos[chunk.channel], encoder.ChunkBlend);
   end;
+
+  SetLength(piggyCodes, finalChunks.Count);
+  for iChunk := 0 to finalChunks.Count - 1 do
+  begin
+    piggyCodes[iChunk].Code := finalChunks[iChunk].reducedChunk.index;
+    piggyCodes[iChunk].ExtraBits := Ord(finalChunks[iChunk].dstNegative) or (Ord(finalChunks[iChunk].dstReversed) shl 1);
+    piggyCodes[iChunk].ExtraBitCount := 2;
+
+    if iChunk mod (encoder.ChunksPerAttenuation * encoder.ChannelCount) = 0 then
+    begin
+      piggyCodes[iChunk].ExtraBits := (piggyCodes[iChunk].ExtraBits shl CMaxAttenuationBits) or finalChunks[iChunk].dstAttenuation;
+      piggyCodes[iChunk].ExtraBitCount += CMaxAttenuationBits;
+
+      if iChunk mod (encoder.AttenuationsPerAttenuationLaw * encoder.ChunksPerAttenuation * encoder.ChannelCount) = 0 then
+      begin
+        piggyCodes[iChunk].ExtraBits := (piggyCodes[iChunk].ExtraBits shl CMaxAttenuationLawDiviverBits) or finalChunks[iChunk].dstAttenuationLawDivider;
+        piggyCodes[iChunk].ExtraBitCount += CMaxAttenuationLawDiviverBits;
+      end;
+    end;
+  end;
+
+  dstPiggyCoder.Free;
+  dstPiggyCoder := TPiggyCoder.Create(piggyCodes, reducedChunks.Count - 1);
+  dstPiggyCoder.SolveCodingBits;
 end;
 
 { TEncoder }
@@ -1224,7 +1255,7 @@ begin
 
     tentativeByteSize := Round(headerCost + indexingCost + chunksCost);
 
-  until (tentativeByteSize <= ProjectedByteSize) or (ChunksPerFrame <= 1);
+  until (tentativeByteSize <= ProjectedByteSize) or (ChunksPerFrame <= CMinChunksPerFrame);
 
   ProjectedByteSize := tentativeByteSize;
 
@@ -1302,28 +1333,15 @@ end;
 
 procedure TEncoder.MakeFrames;
 
-  procedure DoAttLaw(Index: PtrInt; Data: Pointer);
-  var
-    frm: TFrame;
+  procedure DoFrame(Index: PtrInt; Data: Pointer);
   begin
-    frm := frames[Index];
-
-    frm.MakeChunks;
-    frm.FindAttenuationLawDivider;
-    frm.ComputeAttenuations;
-    frm.Reduce;
-    Write('.');
-    frm.Reconstruct;
-    Write('.');
-    frm.SortOptimizeDelta;
-    frm.MakeDstData;
-    Write('.');
+    frames[Index].MakeFrame;
   end;
 
 begin
   WriteLn('[MakeFrames]');
 
-  TMTPool.DoStandaloneLocalProc(@DoAttLaw, 0, FrameCount - 1, NumberOfProcessors);
+  TMTPool.DoStandaloneLocalProc(@DoFrame, 0, FrameCount - 1, NumberOfProcessors);
   WriteLn;
 end;
 
@@ -1634,7 +1652,7 @@ begin
       Writeln('Development options:');
       WriteLn(#9'-d'#9'debug mode (outputs decoded WAVs)');
       WriteLn(#9'-cs'#9'chunk size');
-      WriteLn(#9'-cpf'#9'max. chunks per frame (1-65536)');
+      WriteLn(#9'-cpf'#9'max. chunks per frame (', CMinChunksPerFrame, '-', CMaxChunksPerFrame, ')');
       WriteLn(#9'-cbd'#9'chunk bit depth (8,12)');
       WriteLn(#9'-pr'#9'K-means precision; 0: "lossless" mode');
       WriteLn(#9'-cb'#9'chunk blend');
@@ -1654,7 +1672,7 @@ begin
       enc.FrameLength := Max(ParamValue('-fl', enc.FrameLength), 1.0);
       enc.ChunkBitDepth := EnsureRange(round(ParamValue('-cbd', enc.ChunkBitDepth)), 1, 16);
       enc.ChunkSize := round(ParamValue('-cs', enc.ChunkSize));
-      enc.ChunksPerFrame := EnsureRange(round(ParamValue('-cpf', enc.ChunksPerFrame)), 1, CMaxChunksPerFrame);
+      enc.ChunksPerFrame := EnsureRange(round(ParamValue('-cpf', enc.ChunksPerFrame)), CMinChunksPerFrame, CMaxChunksPerFrame);
       enc.Verbose := HasParam('-v');
       enc.ChunkBlend := EnsureRange(round(ParamValue('-cb', enc.ChunkBlend)), 0, enc.ChunkSize div 2);
       enc.PythonReduce := HasParam('-py');
