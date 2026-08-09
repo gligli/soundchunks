@@ -139,8 +139,8 @@ type
     ChunkSize: Integer;
     ChunksPerFrame: Integer;
     VariableFrameSizeRatio: Double;
+    AttenuationChunkRatioMul: Double;
     TrebleBoost: Boolean;
-    ChunkBlend: Integer;
     FrameLength: Double;
     PythonReduce: Boolean;
     DebugMode: Boolean;
@@ -246,7 +246,10 @@ end;
 function TPiggyCoder.SolveCodingBits: UInt64;
 var
   iCodingBits, valuesCoded: Integer;
-  iCB0, iCB1, iCB2, iCB3: Byte;
+  iCB0, iCB1: Byte;
+{$if CMaxCodingBits >= 2}
+  iCB2, iCB3: Byte;
+{$ifend}
 {$if CMaxCodingBits >= 3}
   iCB4, iCB5, iCB6, iCB7: Byte;
 {$ifend}
@@ -256,8 +259,10 @@ begin
   Result := High(UInt64);
   for iCB0 := 1 to codesBitCount do
     for iCB1 := iCB0 to codesBitCount do
+{$if CMaxCodingBits >= 2}
       for iCB2 := iCB1 to codesBitCount do
         for iCB3 := iCB2 to codesBitCount do
+{$ifend}
 {$if CMaxCodingBits >= 3}
           for iCB4 := iCB3 to codesBitCount do
             for iCB5 := iCB4 to codesBitCount do
@@ -265,7 +270,10 @@ begin
                 for iCB7 := iCB6 to codesBitCount do
 {$ifend}
                 begin
-                  locCodingBits[0] := iCB0; locCodingBits[1] := iCB1; locCodingBits[2] := iCB2; locCodingBits[3] := iCB3;
+                  locCodingBits[0] := iCB0; locCodingBits[1] := iCB1;
+{$if CMaxCodingBits >= 2}
+                  locCodingBits[2] := iCB2; locCodingBits[3] := iCB3;
+{$ifend}
 {$if CMaxCodingBits >= 3}
                   locCodingBits[4] := iCB4; locCodingBits[5] := iCB5; locCodingBits[6] := iCB6; locCodingBits[7] := iCB7;
 {$ifend}
@@ -308,7 +316,11 @@ begin
       Inc(iCodingBits);
     until False;
 
+{$if CMaxCodingBits >= 2}
     Result += IfThen(iCodingBits = prevCodingBits, 1, 1 + CMaxCodingBits);
+{$else}
+    Result += CMaxCodingBits;
+{$ifend}
     Result += ACodingBits[iCodingBits];
 
     prevCodingBits := iCodingBits;
@@ -349,6 +361,7 @@ begin
 
       if codeValue < codeBitsLimit then
       begin
+{$if CMaxCodingBits >= 2}
         if iCodingBits = prevCodingBits then
         begin
           itemBits := itemBits or (0 shl itemBitCnt);
@@ -364,6 +377,10 @@ begin
 
           prevCodingBits := iCodingBits;
         end;
+{$else}
+        itemBits := itemBits or (iCodingBits shl itemBitCnt);
+        itemBitCnt += CMaxCodingBits;
+{$ifend}
 
         itemBits := itemBits or (codeValue shl itemBitCnt);
         itemBitCnt += codingBits[iCodingBits];
@@ -410,7 +427,7 @@ begin
 
   SetLength(srcData, frame.encoder.ChunkSize);
   if Assigned(srcDta) then
-    Move(srcDta[idx * (frame.encoder.ChunkSize - frame.encoder.ChunkBlend)], srcData[0], frame.encoder.ChunkSize * SizeOf(Double));
+    Move(srcDta[idx * frame.encoder.ChunkSize], srcData[0], frame.encoder.ChunkSize * SizeOf(Double));
 end;
 
 function TChunk.ComputeDCT: TDoubleDynArray;
@@ -509,7 +526,7 @@ begin
     end;
   end;
 
-  ChunkCount := (endSmp - startSmp + 1 - 1) div (encoder.ChunkSize - encoder.ChunkBlend) + 1;
+  ChunkCount := (endSmp - startSmp + 1 - 1) div encoder.ChunkSize + 1;
 
   if encoder.Verbose then
     WriteLn('Frame #', index, #9, ChunkCount);
@@ -850,7 +867,7 @@ begin
   AStream.WriteWord(w and $ffff);
   w := (encoder.ChunkSize shl 8) or encoder.ChunkBitDepth;
   AStream.WriteWord(w and $ffff);
-  w := (encoder.ChunkBlend shl 24) or encoder.SampleRate;
+  w := (TPiggyCoder.CMaxCodingBits shl 24) or encoder.SampleRate;
   AStream.WriteDWord(w and $ffffffff);
   w := (encoder.AttenuationsPerAttenuationLaw shl 8) or encoder.ChunksPerAttenuation;
   AStream.WriteWord(w and $ffff);
@@ -944,8 +961,6 @@ begin
         dstData[chunk.channel, pos[chunk.channel]] += smp[chunk.channel];
       Inc(pos[chunk.channel]);
     end;
-
-    Dec(pos[chunk.channel], encoder.ChunkBlend);
   end;
 
   SetLength(piggyCodes, finalChunks.Count);
@@ -1096,9 +1111,9 @@ begin
 
   // pass 1
 
-  BlockSampleCount := ChunkSize - ChunkBlend;
-  ChunksPerAttenuation := Round(SampleRate * CAttenuationMilliseconds / (1000.0 * ChunkSize));
-  AttenuationsPerAttenuationLaw := Round(SampleRate * CAttenuationLawMilliseconds / (1000.0 * ChunkSize * ChunksPerAttenuation));
+  BlockSampleCount := ChunkSize;
+  ChunksPerAttenuation := Round(SampleRate * CAttenuationMilliseconds / (1000.0 * ChunkSize * AttenuationChunkRatioMul));
+  AttenuationsPerAttenuationLaw := Round(SampleRate * CAttenuationLawMilliseconds / (1000.0 * ChunkSize * ChunksPerAttenuation * AttenuationChunkRatioMul));
 
   // ensure srcData ends on a full block
   psc := SampleCount;
@@ -1115,6 +1130,8 @@ begin
 
   if Verbose then
   begin
+    writeln('ChunksPerAttenuation = ', ChunksPerAttenuation);
+    writeln('AttenuationsPerAttenuationLaw = ', AttenuationsPerAttenuationLaw);
     writeln('ProjectedByteSize = ', ProjectedByteSize);
   end;
 
@@ -1130,7 +1147,7 @@ begin
         1 {dstNegative} + 1 {dstReversed} +
         CMaxAttenuationBits / (ChunksPerAttenuation * ChannelCount) +
         CMaxAttenuationLawDiviverBits / (AttenuationsPerAttenuationLaw * ChunksPerAttenuation * ChannelCount)
-      )) / (8 {bytes -> bits} * (ChunkSize - ChunkBlend));
+      )) / (8 {bytes -> bits} * ChunkSize);
 
     chunksCost :=
       (ChunksPerFrame * ChunkSize) * ChunkBitDepth * FrameCount / 8;
@@ -1243,7 +1260,7 @@ begin
   ChunkSize := 4;
   TrebleBoost := False;
   VariableFrameSizeRatio := 1.0;
-  ChunkBlend := 0;
+  AttenuationChunkRatioMul := 1.0;
   FrameLength := 10000; // in ms
   PythonReduce := False;
   Precision := 3;
@@ -1542,7 +1559,7 @@ begin
       WriteLn(#9'-cpf'#9'max. chunks per frame (', CMinChunksPerFrame, '-', CMaxChunksPerFrame, ')');
       WriteLn(#9'-cbd'#9'chunk bit depth (8,12)');
       WriteLn(#9'-pr'#9'K-means precision; 0: "lossless" mode');
-      WriteLn(#9'-cb'#9'chunk blend');
+      WriteLn(#9'-att'#9'attenuation to chunk ratio multiplier (0.1-10.0)');
       WriteLn(#9'-py'#9'python cluster.py reducer');
 
       WriteLn;
@@ -1555,13 +1572,13 @@ begin
     try
       enc.BitRate := round(ParamValue('-br', enc.BitRate));
       enc.Precision := round(ParamValue('-pr', enc.Precision));
-      enc.VariableFrameSizeRatio :=  EnsureRange(ParamValue('-vfr', enc.VariableFrameSizeRatio), 0.0, 1.0);
+      enc.VariableFrameSizeRatio := EnsureRange(ParamValue('-vfr', enc.VariableFrameSizeRatio), 0.0, 1.0);
+      enc.AttenuationChunkRatioMul := EnsureRange(ParamValue('-att', enc.AttenuationChunkRatioMul), 0.1, 10.0);
       enc.FrameLength := Max(ParamValue('-fl', enc.FrameLength), 1.0);
       enc.ChunkBitDepth := EnsureRange(round(ParamValue('-cbd', enc.ChunkBitDepth)), 1, 16);
       enc.ChunkSize := round(ParamValue('-cs', enc.ChunkSize));
       enc.ChunksPerFrame := EnsureRange(round(ParamValue('-cpf', enc.ChunksPerFrame)), CMinChunksPerFrame, CMaxChunksPerFrame);
       enc.Verbose := HasParam('-v');
-      enc.ChunkBlend := EnsureRange(round(ParamValue('-cb', enc.ChunkBlend)), 0, enc.ChunkSize div 2);
       enc.PythonReduce := HasParam('-py');
       enc.DebugMode := HasParam('-d');
 
@@ -1573,8 +1590,8 @@ begin
         WriteLn('ChunkSize = ', enc.ChunkSize);
         WriteLn('MaxChunksPerFrame = ', enc.ChunksPerFrame);
         WriteLn('ChunkBitDepth = ', enc.ChunkBitDepth);
+        WriteLn('AttenuationChunkRatioMul = ', FloatToStr(enc.AttenuationChunkRatioMul));
         WriteLn('Precision = ', enc.Precision);
-        WriteLn('ChunkBlend = ', enc.ChunkBlend);
       end;
       WriteLn;
 
