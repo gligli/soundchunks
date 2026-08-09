@@ -25,7 +25,7 @@ type
 
   TPiggyCoder = class
   const
-    CMaxCodingBits = 3;
+    CMaxCodingBits = 2;
     CMaxCodingCount = 1 shl CMaxCodingBits;
   type
     TCode = record
@@ -44,22 +44,13 @@ type
   public
     constructor Create(ACodes: TCodeArray; AHighestCode: Integer);
 
-    procedure SolveCodingBits;
+    function SolveCodingBits: UInt64;
     procedure Render(AStream: TStream);
   end;
 
   { TChunk }
 
-  TChunkList = class(specialize TFPGObjectList<TChunk>)
-  private
-    function GetDeltaDist(AIndex: Integer): UInt64;
-    function InternalSortDelta: Cardinal;
-    procedure ExchangeChunks(AIndex1, AIndex2: Integer);
-  public
-    frame: Integer;
-    chunkRefsRef: TChunkList;
-    procedure SortOptimizeDelta;
-  end;
+  TChunkList = specialize TFPGObjectList<TChunk>;
 
   TChunk = class
   private
@@ -119,7 +110,6 @@ type
     procedure ComputeAttenuations;
     procedure Reduce;
     procedure Reconstruct;
-    procedure SortOptimizeDelta;
     procedure MakeDstData;
     procedure SaveStream(AStream: TStream);
 
@@ -233,108 +223,6 @@ begin
   Result := StrToFloatDef(copy(ParamStr(idx), Length(p) + 1), def);
 end;
 
-function TChunkList.GetDeltaDist(AIndex: Integer): UInt64;
-var
-  iBackRef, chunkRefIdx, prevIdx, nextIdx: Integer;
-  chunk: TChunk;
-begin
-  Result := 0;
-  chunk := Items[AIndex];
-
-  chunkRefIdx := chunk.backRefs[0];
-  prevIdx := 0;
-  if chunkRefIdx > 0 then // only the first backRef can have index 0 (built beginning to end)
-    prevIdx := chunkRefsRef[chunkRefIdx - 1].reducedChunk.index;
-  nextIdx := 0;
-  if chunkRefIdx < chunk.backRefsIdx - 1 then // the first backRef can also be the last
-    nextIdx := chunkRefsRef[chunkRefIdx + 1].reducedChunk.index;
-  Result += Abs(AIndex -  prevIdx) + Abs(nextIdx -  AIndex);
-
-  for iBackRef := 1 to chunk.backRefsIdx - 2 do
-  begin
-    chunkRefIdx := chunk.backRefs[iBackRef];
-    prevIdx := chunkRefsRef[chunkRefIdx - 1].reducedChunk.index;
-    nextIdx := chunkRefsRef[chunkRefIdx + 1].reducedChunk.index;
-    Result += Abs(AIndex -  prevIdx) + Abs(nextIdx -  AIndex);
-  end;
-
-  chunkRefIdx := chunk.backRefs[chunk.backRefsIdx - 1];
-  prevIdx := 0;
-  if chunkRefIdx > 0 then // the last backRef can also be the first
-    prevIdx := chunkRefsRef[chunkRefIdx - 1].reducedChunk.index;
-  nextIdx := 0;
-  if chunkRefIdx < chunk.backRefsIdx - 1 then // only the last backRef can have index "chunk.backRefsIdx - 1" (built beginning to end)
-    nextIdx := chunkRefsRef[chunkRefIdx + 1].reducedChunk.index;
-  Result += Abs(AIndex -  prevIdx) + Abs(nextIdx -  AIndex);
-end;
-
-function TChunkList.InternalSortDelta: Cardinal;
-var
-  I: Integer;
-  cmp: Int64;
-begin
-  Result := 0;
-
-  for I := 1 to Count - 1 do
-  begin
-    cmp := GetDeltaDist(I) + GetDeltaDist(I - 1);
-
-    ExchangeChunks(I, I - 1);
-
-    cmp := GetDeltaDist(I) + GetDeltaDist(I - 1) - cmp;
-
-    if cmp >= 0 then
-      ExchangeChunks(I, I - 1)
-    else
-      Inc(Result);
-  end;
-end;
-
-procedure TChunkList.ExchangeChunks(AIndex1, AIndex2: Integer);
-begin
-  extern.Exchange(Items[AIndex1].index, Items[AIndex2].index);
-  InternalExchange(AIndex1, AIndex2);
-end;
-
-procedure TChunkList.SortOptimizeDelta;
-var
-  iChunkRef, iChunk: Integer;
-  moves, movesAcc, iter: Cardinal;
-  chunk: TChunk;
-begin
-  for iChunk := 0 to Count - 1 do
-  begin
-    chunk := Items[iChunk];
-    chunk.index := iChunk;
-    SetLength(chunk.backRefs, chunk.useCount);
-  end;
-
-  for iChunkRef := 0 to chunkRefsRef.Count - 1 do
-  begin
-    chunk := chunkRefsRef[iChunkRef];
-    chunk.reducedChunk.backRefs[chunk.reducedChunk.backRefsIdx] := iChunkRef;
-    Inc(chunk.reducedChunk.backRefsIdx);
-  end;
-
-  iter := 0;
-  movesAcc := 0;
-  repeat
-    moves := InternalSortDelta;
-    movesAcc += moves;
-    Inc(iter);
-  until (moves = 0) or (iter > 1000);
-
-  if frame >= 0 then
-    WriteLn('[SortOptimizeDelta] Frame = ', frame:4, ', Moves = ', movesAcc:8);
-
-  for iChunk := 0 to Count - 1 do
-  begin
-    chunk := Items[iChunk];
-    chunk.index := iChunk;
-    SetLength(chunk.backRefs, 0);
-  end;
-end;
-
 { TPiggyCoder }
 
 constructor TPiggyCoder.Create(ACodes: TCodeArray; AHighestCode: Integer);
@@ -355,24 +243,32 @@ begin
   end;
 end;
 
-procedure TPiggyCoder.SolveCodingBits;
+function TPiggyCoder.SolveCodingBits: UInt64;
 var
-  iCB0, iCB1, iCB2, iCB3, iCB4, iCB5, iCB6, iCB7, iCodingBits, valuesCoded: Integer;
-  bestSize, curSize: UInt64;
+  iCodingBits, valuesCoded: Integer;
+  iCB0, iCB1, iCB2, iCB3: Byte;
+{$if CMaxCodingBits >= 3}
+  iCB4, iCB5, iCB6, iCB7: Byte;
+{$ifend}
+  curSize: UInt64;
   locCodingBits: array[0 .. CMaxCodingCount - 1] of Byte;
 begin
-  bestSize := High(UInt64);
+  Result := High(UInt64);
   for iCB0 := 1 to codesBitCount do
     for iCB1 := iCB0 to codesBitCount do
       for iCB2 := iCB1 to codesBitCount do
         for iCB3 := iCB2 to codesBitCount do
+{$if CMaxCodingBits >= 3}
           for iCB4 := iCB3 to codesBitCount do
             for iCB5 := iCB4 to codesBitCount do
               for iCB6 := iCB5 to codesBitCount do
                 for iCB7 := iCB6 to codesBitCount do
+{$ifend}
                 begin
                   locCodingBits[0] := iCB0; locCodingBits[1] := iCB1; locCodingBits[2] := iCB2; locCodingBits[3] := iCB3;
+{$if CMaxCodingBits >= 3}
                   locCodingBits[4] := iCB4; locCodingBits[5] := iCB5; locCodingBits[6] := iCB6; locCodingBits[7] := iCB7;
+{$ifend}
 
                   valuesCoded := -1;
                   for iCodingBits := 0 to CMaxCodingCount - 1 do
@@ -383,9 +279,9 @@ begin
 
                   curSize := TestCodingBits(locCodingBits);
 
-                  if curSize < bestSize then
+                  if curSize < Result then
                   begin
-                    bestSize := curSize;
+                    Result := curSize;
                     for iCodingBits := 0 to CMaxCodingCount - 1 do
                       codingBits[iCodingBits] := locCodingBits[iCodingBits];
                   end;
@@ -940,13 +836,6 @@ begin
     reducedChunks[iChunk].index := iChunk;
 end;
 
-procedure TFrame.SortOptimizeDelta;
-begin
-  reducedChunks.frame := IfThen(encoder.Verbose, index, -1);
-  reducedChunks.chunkRefsRef := chunkRefs;
-  reducedChunks.SortOptimizeDelta;
-end;
-
 procedure TFrame.SaveStream(AStream: TStream);
 var
   iChunk, iSample, iChannel, s1, s2: Integer;
@@ -1018,8 +907,6 @@ begin
   Reduce;
   Write('.');
   Reconstruct;
-  Write('.');
-  SortOptimizeDelta;
   Write('.');
   MakeDstData;
   Write('.');
