@@ -74,7 +74,7 @@ type
     constructor Create(frm: TFrame; idx: Integer; srcDta: PDouble);
 
     function ComputeDCT: TDoubleDynArray;
-    procedure ComputeFromInvDCT(const InvDCT: TDoubleDynArray);
+    procedure ComputeFromInvDCT(InvDCT: PDouble);
     procedure ComputeDstAttributes;
     procedure MakeDstData;
 
@@ -440,13 +440,13 @@ begin
   TEncoder.ComputeDCT(Length(data), @data[0], @Result[0]);
 end;
 
-procedure TChunk.ComputeFromInvDCT(const InvDCT: TDoubleDynArray);
+procedure TChunk.ComputeFromInvDCT(InvDCT: PDouble);
 var
   iSample: Integer;
   data: TDoubleDynArray;
 begin
   SetLength(data, frame.encoder.ChunkSize);
-  TEncoder.ComputeInvDCT(Length(InvDCT), @InvDCT[0], @data[0]);
+  TEncoder.ComputeInvDCT(frame.encoder.ChunkSize, @InvDCT[0], @data[0]);
 
   SetLength(dstData, frame.encoder.ChunkSize);
   for iSample := 0 to High(data) do
@@ -737,7 +737,7 @@ begin
       chunk := TChunk.Create(Self, iChunk, nil);
       reducedChunks.Add(chunk);
 
-      chunk.ComputeFromInvDCT(Centroids[iChunk]);
+      chunk.ComputeFromInvDCT(@Centroids[iChunk, 0]);
   	end;
 
     for iChunk := 0 to chunkRefs.Count - 1 do
