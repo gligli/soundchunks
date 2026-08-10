@@ -744,7 +744,10 @@ begin
   	end;
 
     for iChunk := 0 to chunkRefs.Count - 1 do
+    begin
       chunkRefs[iChunk].reducedChunk := reducedChunks[Clusters[iChunk]];
+      Inc(chunkRefs[iChunk].reducedChunk.useCount);
+    end;
   end
   else
   begin
@@ -763,8 +766,13 @@ begin
     end;
 
     for iChunk := 0 to chunkRefs.Count - 1 do
+    begin
       chunkRefs[iChunk].reducedChunk := reducedChunks[iChunk];
+      Inc(chunkRefs[iChunk].reducedChunk.useCount);
+    end;
   end;
+
+  reducedChunks.Sort(@CompareChunkUseCountInv);
 end;
 
 procedure TFrame.Reconstruct;
@@ -773,14 +781,13 @@ var
   bestErr, attCoeff, skew: Double;
   truthAcc, lossyAcc: TDoubleDynArray;
   Dataset: TANNFloatDynArray2;
-  query, queryDCT: TANNFloatDynArray;
+  query: TANNFloatDynArray;
   KDT: PANNkdtree;
   chunk: TChunk;
 begin
   SetLength(Dataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, encoder.chunkSize * 2);
 
-  SetLength(query, encoder.chunkSize);
-  SetLength(queryDCT, encoder.chunkSize);
+  SetLength(query, encoder.chunkSize * 2);
   SetLength(truthAcc, encoder.ChannelCount);
   SetLength(lossyAcc, encoder.ChannelCount);
   for iChannel := 0 to encoder.ChannelCount - 1 do
@@ -821,11 +828,11 @@ begin
 
       skew := (lossyAcc[chunk.channel] - truthAcc[chunk.channel]) / encoder.ChunkSize;
       for iSample := 0 to encoder.ChunkSize - 1 do
-        query[iSample] := (chunk.srcData[iSample] - skew) * attCoeff;
+        query[encoder.chunkSize + iSample] := (chunk.srcData[iSample] - skew) * attCoeff;
 
-      TEncoder.ComputeDCT(encoder.ChunkSize, @query[0], @queryDCT[0]);
+      TEncoder.ComputeDCT(encoder.ChunkSize, @query[encoder.chunkSize], @query[0]);
 
-      bestIdx := ann_kdtree_search(KDT, @queryDCT[0], 0.0, @bestErr);
+      bestIdx := ann_kdtree_search(KDT, @query[0], 0.0, @bestErr);
 
       chunk.dstNegative := bestIdx and 1 <> 0;
       chunk.dstReversed := bestIdx and 2 <> 0;
@@ -935,17 +942,17 @@ var
   chunk: TChunk;
   delta: Double;
   pos: TIntegerDynArray;
-  smp: TDoubleDynArray;
+  smpAcc: TDoubleDynArray;
   piggyCodes: TPiggyCoder.TCodeArray;
 begin
   SetLength(pos, encoder.ChannelCount);
-  SetLength(smp, encoder.ChannelCount);
+  SetLength(smpAcc, encoder.ChannelCount);
   SetLength(dstData, encoder.ChannelCount, SampleCount);
   for iChannel := 0 to encoder.ChannelCount - 1 do
   begin
     FillQWord(dstData[iChannel, 0], SampleCount, 0);
     pos[iChannel] := 0;
-    smp[iChannel] := srcFirstSample[iChannel];
+    smpAcc[iChannel] := srcFirstSample[iChannel];
   end;
 
   for iChunk := 0 to finalChunks.Count - 1 do
@@ -955,10 +962,10 @@ begin
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
       delta := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, encoder.ChunkSize - 1 - iSample, iSample)], encoder.ChunkBitDepth, chunk.dstAttenuation, chunk.dstNegative, chunk.dstAttenuationLaw);
-      smp[chunk.channel] += delta;
+      smpAcc[chunk.channel] += delta;
 
       if InRange(pos[chunk.channel], 0, High(dstData[chunk.channel])) then
-        dstData[chunk.channel, pos[chunk.channel]] += smp[chunk.channel];
+        dstData[chunk.channel, pos[chunk.channel]] += smpAcc[chunk.channel];
       Inc(pos[chunk.channel]);
     end;
   end;
