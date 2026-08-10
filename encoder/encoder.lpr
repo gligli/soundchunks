@@ -68,7 +68,7 @@ type
     backRefsIdx: Integer;
     backRefs: TIntegerDynArray;
 
-    srcData: TDoubleDynArray;
+    srcData: PDouble;
     dstData: TSmallIntDynArray;
 
     constructor Create(frm: TFrame; idx: Integer; srcDta: PDouble);
@@ -424,10 +424,7 @@ begin
   frame := frm;
   reducedChunk := Self;
   channel := -1;
-
-  SetLength(srcData, frame.encoder.ChunkSize);
-  if Assigned(srcDta) then
-    Move(srcDta[idx * frame.encoder.ChunkSize], srcData[0], frame.encoder.ChunkSize * SizeOf(Double));
+  srcData := srcDta;
 end;
 
 function TChunk.ComputeDCT: TDoubleDynArray;
@@ -435,11 +432,11 @@ var
   iSample: Integer;
   data: TDoubleDynArray;
 begin
-  SetLength(data, Length(srcData));
+  SetLength(data, frame.encoder.ChunkSize);
   for iSample := 0 to High(data) do
-    data[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(data) - iSample, iSample)], 2, dstAttenuation, dstNegative, dstAttenuationLaw).AsDouble;
+    data[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, frame.encoder.ChunkSize - 1 - iSample, iSample)], 2, dstAttenuation, dstNegative, dstAttenuationLaw).AsDouble;
 
-  SetLength(Result, Length(srcData));
+  SetLength(Result, frame.encoder.ChunkSize);
   TEncoder.ComputeDCT(Length(data), @data[0], @Result[0]);
 end;
 
@@ -448,10 +445,10 @@ var
   iSample: Integer;
   data: TDoubleDynArray;
 begin
-  SetLength(data, Length(srcData));
+  SetLength(data, frame.encoder.ChunkSize);
   TEncoder.ComputeInvDCT(Length(InvDCT), @InvDCT[0], @data[0]);
 
-  SetLength(dstData, Length(srcData));
+  SetLength(dstData, frame.encoder.ChunkSize);
   for iSample := 0 to High(data) do
     dstData[iSample] := TEncoder.makeOutputSample(data[iSample], frame.encoder.ChunkBitDepth, -1, False, 0.0).AsInt;
 end;
@@ -464,12 +461,12 @@ begin
   // compute overall sign (up <-> down mirror)
 
   p1 := 0.0;
-  for i := 0 to High(srcData) do
+  for i := 0 to frame.encoder.ChunkSize - 1 do
     if srcData[i] < 0 then
       p1 -= srcData[i];
 
   p2 := 0.0;
-  for i := 0 to High(srcData) do
+  for i := 0 to frame.encoder.ChunkSize - 1 do
     if srcData[i] > 0 then
       p2 += srcData[i];
 
@@ -478,11 +475,11 @@ begin
   // compute overall reversed (left <-> right mirror)
 
   p1 := 0.0;
-  for i := 0 to Length(srcData) div 2 - 1 do
+  for i := 0 to frame.encoder.ChunkSize div 2 - 1 do
     p1 += Abs(srcData[i]);
 
   p2 := 0.0;
-  for i := Length(srcData) - Length(srcData) div 2 to High(srcData) do
+  for i := frame.encoder.ChunkSize - frame.encoder.ChunkSize div 2 to frame.encoder.ChunkSize - 1 do
     p2 += Abs(srcData[i]);
 
   dstReversed := p1 > p2;
@@ -492,7 +489,7 @@ procedure TChunk.MakeDstData;
 var
   i: Integer;
 begin
-  SetLength(dstData, length(srcData));
+  SetLength(dstData, frame.encoder.ChunkSize);
   for i := 0 to High(dstData) do
     dstData[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(dstData) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative, dstAttenuationLaw).AsInt;
 end;
@@ -553,7 +550,7 @@ begin
   for iChunk := 0 to ChunkCount - 1 do
     for iChannel := 0 to encoder.ChannelCount - 1 do
     begin
-      chunk := TChunk.Create(Self, iChunk, @srcData[iChannel, 0]);
+      chunk := TChunk.Create(Self, iChunk, @srcData[iChannel, iChunk * encoder.ChunkSize]);
       chunk.channel := iChannel;
       chunk.ComputeDstAttributes;
       finalChunks.Add(chunk);
@@ -682,7 +679,7 @@ end;
 
 procedure TFrame.Reduce;
 var
-  iChunk, prec, colCount, clusterCount: Integer;
+  iChunk, iSample, prec, colCount, clusterCount, dsIdx: Integer;
   chunk: TChunk;
   Clusters: TIntegerDynArray;
   Dataset: TDoubleDynArray2;
@@ -704,9 +701,9 @@ begin
     // usual chunk reduction
 
     if encoder.Verbose then
-      WriteLn('[Reduce] Frame = ', index:4, ', N = ', chunkRefs.Count:8, ', K = ', clusterCount:6);
+      WriteLn('[Reduce] Frame = ', index:4, ', N = ', Length(Dataset):8, ', K = ', clusterCount:6);
 
-    SetLength(Clusters, chunkRefs.Count);
+    SetLength(Clusters, Length(Dataset));
     SetLength(Centroids, clusterCount, colCount);
 
     if not encoder.PythonReduce then
@@ -716,7 +713,7 @@ begin
         Yakmo := yakmo_create(clusterCount, 1, -1, 1, 0, 0, Ord(encoder.Verbose));
         try
           yakmo_set_num_threads(encoder.ThreadsPerFrame);
-          yakmo_load_train_data(Yakmo, chunkRefs.Count, colCount, PPDouble(@Dataset[0]));
+          yakmo_load_train_data(Yakmo, Length(Dataset), colCount, PPDouble(@Dataset[0]));
           yakmo_train_on_data(Yakmo, @Clusters[0]);
           yakmo_get_centroids(Yakmo, PPDouble(@Centroids[0]));
         finally
@@ -761,7 +758,7 @@ begin
       reducedChunks.Add(chunk);
 
       chunkRefs[iChunk].MakeDstData;
-      chunk.srcData := Copy(chunkRefs[iChunk].srcData);
+      chunk.srcData := chunkRefs[iChunk].srcData;
       chunk.dstData := Copy(chunkRefs[iChunk].dstData);
     end;
 
