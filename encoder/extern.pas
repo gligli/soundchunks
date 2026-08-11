@@ -123,7 +123,7 @@ function HalfNumberOfProcessors: Integer;
 function QuarterNumberOfProcessors: Integer;
 
 procedure DoExternalSKLearn(Dataset: TDoubleDynArray2;  ClusterCount, Precision: Integer; Compiled, PrintProgress: Boolean; var Clusters: TIntegerDynArray; var Centroids: TDoubleDynArray2);
-procedure DoExternalSOX(AFNIn, AFNOut: String; SampleRate: Integer = 0);
+procedure DoExternalSOX(AFNIn, AFNOut: String; SampleRate: Integer = 0; ForceMono: Boolean = False);
 function DoExternalEAQUAL(AFNRef, AFNTest: String; PrintStats, UseDIX: Boolean; BlockLength: Integer): Double;
 
 procedure LZCompress(ASourceStream: TStream; PrintProgress, Decompress: Boolean; ADestStream: TStream);
@@ -657,20 +657,26 @@ begin
   end;
 end;
 
-procedure DoExternalSOX(AFNIn, AFNOut: String; SampleRate: Integer);
+procedure DoExternalSOX(AFNIn, AFNOut: String; SampleRate: Integer; ForceMono: Boolean);
 var
   i: Integer;
-  Output, ErrOut: String;
+  Params, Output, ErrOut: String;
   Process: TProcess;
 begin
   Process := TProcess.Create(nil);
 
   Process.CurrentDirectory := ExtractFilePath(ParamStr(0));
   Process.Executable := 'sox\sox.exe';
-  if SampleRate = 0 then
-    Process.Parameters.Add('"' + AFNIn + '" "' + AFNOut + '"')
-  else
-    Process.Parameters.Add('"' + AFNIn + '" "' + AFNOut + '" rate -h ' + IntToStr(SampleRate));
+
+  Params := '';
+  Params += '"' + AFNIn + '" ';
+  if ForceMono then
+    Params += '-c 1 ';
+  Params += '"' + AFNOut + '"';
+  if SampleRate > 0 then
+    Params += ' rate -v ' + IntToStr(SampleRate);
+  Process.Parameters.Add(Params);
+
   Process.ShowWindow := swoHIDE;
   Process.Priority := ppNormal;
 

@@ -65,12 +65,12 @@
           </Other>
         </CompilerOptions>
       </Item2>
-      <Item3 Name="Release2">
+      <Item3 Name="Release_Atari_STe">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
           <Target>
-            <Filename Value="encoder2"/>
+            <Filename Value="encoder_atari_ste"/>
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
@@ -99,7 +99,8 @@
             <LinkSmart Value="True"/>
           </Linking>
           <Other>
-            <CustomOptions Value="-dRELEASE"/>
+            <CustomOptions Value="-dRELEASE
+-dATARI_STE"/>
             <OtherDefines Count="1">
               <Define0 Value="DEBUG"/>
             </OtherDefines>
@@ -115,13 +116,13 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="..\opus_test\mo_b_44_2.wav ..\out2.wav  -d -cs16 -br64"/>
+        <CommandLineParams Value="..\fr025_st4.flac ..\st.wav -v -d -br36"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="..\opus_test\mo_b_44_2.wav ..\out2.wav  -d -cs16 -br64"/>
+            <CommandLineParams Value="..\fr025_st4.flac ..\st.wav -v -d -br36"/>
           </local>
         </Mode0>
       </Modes>
