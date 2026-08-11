@@ -9,8 +9,6 @@ const
   CAttrMul: array[Boolean{12 bits?}] of Integer = ((1 shl (CAttrShift + (16 - 8))) - 1, (1 shl (CAttrShift + (16 - 12))) - 1);
 
   CAttenuationLawNumerator = 1;
-  CPiggyCodingBits = 2;
-  CPiggyCodingCount = 1 shl CPiggyCodingBits;
   CMaxAttenuationBits = 5;
   CMaxAttenuation = (1 shl CMaxAttenuationBits) - 1;
   CMaxAttenuationLawDiviverBits = 7;
@@ -46,9 +44,9 @@ const
     chunkIndex: TIntegerDynArray;
     chunkNegative, chunkReversed: TBooleanDynArray;
     StreamVersion, ChannelCount, ChunkBitDepth, ChunkSize, ChunkCount: Integer;
-    FrameLength, SampleRate, ChunkBlend, ChunksPerAttenuation, AttenuationsPerAttenuationLaw: Integer;
+    FrameLength, SampleRate, PiggyMaxCodingBits, ChunksPerAttenuation, AttenuationsPerAttenuationLaw: Integer;
     Chunks: TSmallIntDynArray2;
-    piggyCodingBits: array[0 .. CPiggyCodingCount - 1] of Byte;
+    piggyCodings: array[0 .. 15] of Byte;
     attenuationLookup : array[0 .. CMaxAttenuation] of Integer;
     memStream: TMemoryStream;
     law, lawAcc: Double;
@@ -92,7 +90,7 @@ const
         ChunkBitDepth := ASourceStream.ReadByte;
         ChunkSize := ASourceStream.ReadByte;
         SampleRate := ASourceStream.ReadDWord;
-        ChunkBlend := SampleRate shr 24;
+        PiggyMaxCodingBits := SampleRate shr 24;
         SampleRate := SampleRate and $ffffff;
         ChunksPerAttenuation := ASourceStream.ReadByte * ChannelCount;
         AttenuationsPerAttenuationLaw := ASourceStream.ReadByte;
@@ -104,11 +102,10 @@ const
           writeln('ChannelCount = ', ChannelCount);
           writeln('ChunkBitDepth = ', ChunkBitDepth);
           writeln('ChunkSize = ', ChunkSize);
-          writeln('ChunkBlend = ', ChunkBlend);
+          writeln('PiggyMaxCodingBits = ', PiggyMaxCodingBits);
         end;
 
         Assert(StreamVersion = CDecodedStreamVersion, 'StreamVersion not supported');
-        Assert(ChunkBlend = 0, 'ChunkBlend not supported');
 
         SetLength(Chunks, ChunkCount, ChunkSize);
 
@@ -159,8 +156,8 @@ const
         for iChannel := 0 to ChannelCount - 1 do
           channelSample[iChannel] := SmallInt(ASourceStream.ReadWord);
 
-        for iVariableCoding := 0 to CPiggyCodingCount - 1 do
-          piggyCodingBits[iVariableCoding] := ASourceStream.ReadByte;
+        for iVariableCoding := 0 to (1 shl PiggyMaxCodingBits) - 1 do
+          piggyCodings[iVariableCoding] := ASourceStream.ReadByte;
 
         bits := 0;
         bitCount := 0;
@@ -203,14 +200,14 @@ const
             chunkReversed[iChannel] := GetBits(1) <> 0;
 
             if GetBits(1) <> 0 then // has new header?
-              variableCodingHeader := GetBits(CPiggyCodingBits);
+              variableCodingHeader := GetBits(PiggyMaxCodingBits);
 
             FillBits;
 
             chunkIndex[iChannel] := 0;
             for iVariableCoding := 0 to variableCodingHeader - 1 do
-              chunkIndex[iChannel] += 1 shl piggyCodingBits[iVariableCoding];
-            chunkIndex[iChannel] += GetBits(piggyCodingBits[variableCodingHeader]);
+              chunkIndex[iChannel] += 1 shl piggyCodings[iVariableCoding];
+            chunkIndex[iChannel] += GetBits(piggyCodings[variableCodingHeader]);
           end;
 
           for iSample := 0 to ChunkSize - 1 do
