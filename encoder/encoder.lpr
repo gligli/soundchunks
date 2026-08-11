@@ -278,11 +278,11 @@ begin
                   locCodingBits[4] := iCB4; locCodingBits[5] := iCB5; locCodingBits[6] := iCB6; locCodingBits[7] := iCB7;
 {$ifend}
 
-                  valuesCoded := -1;
+                  valuesCoded := 0;
                   for iCodingBits := 0 to CMaxCodingCount - 1 do
                     valuesCoded += 1 shl locCodingBits[iCodingBits];
 
-                  if (valuesCoded <= highestCode) or (valuesCoded > highestCode shl 1) then
+                  if valuesCoded <= highestCode then
                     Continue;
 
                   curSize := TestCodingBits(locCodingBits);
