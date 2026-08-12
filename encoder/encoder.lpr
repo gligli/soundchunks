@@ -676,6 +676,7 @@ begin
       chunk := TChunk.Create(Self, iChunk, nil);
       reducedChunks.Add(chunk);
 
+      chunkRefs[iChunk].MakeDstData;
       chunk.srcData := chunkRefs[iChunk].srcData;
       chunk.dstData := Copy(chunkRefs[iChunk].dstData);
     end;
