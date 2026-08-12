@@ -69,10 +69,7 @@ type
     channel, index, useCount: Integer;
     dstNegative: Boolean;
     dstReversed: Boolean;
-    dstAttenuation: Integer;
-
-    backRefsIdx: Integer;
-    backRefs: TIntegerDynArray;
+    dstAttenuation: Byte;
 
     srcData: PDouble;
     dstData: TSmallIntDynArray;
@@ -165,10 +162,10 @@ type
     frames: TFrameList;
 
     class function make16BitSample(smp: Double): SmallInt;
-    class function makeOutputSample(smp: Double; OutBitDepth, Attenuation: Integer; Negative: Boolean): TOutputSample;
+    class function makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean): TOutputSample;
     class function makeFloatSample(smp: SmallInt): Double;
-    class function makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Integer; Negative: Boolean): Double;
-    class function SolveAttenuation(chunkSz: Integer; samples: PDouble): Integer;
+    class function makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean): Double;
+    class function SolveAttenuation(chunkSz: Integer; samples: PDouble): Byte;
     class function ComputeAttenuation(Attenuation: Integer): Double;
     class procedure ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
     class procedure ComputeInvDCT(chunkSz: Integer; dct, samples: PDouble);
@@ -493,35 +490,16 @@ begin
 end;
 
 constructor TFrame.Create(enc: TEncoder; idx, startSmp, endSmp: Integer);
-var
-  iChannel, iSample: Integer;
-  prevSmp, smp: Double;
 begin
   encoder := enc;
   index := idx;
   StartSample := startSmp;
   SampleCount := endSmp - startSmp + 1;
+  ChunkCount := (SampleCount - 1) div encoder.ChunkSize + 1;
 
   chunkRefs := TChunkList.Create(False);
   reducedChunks := TChunkList.Create;
   finalChunks := TChunkList.Create;
-
-  SetLength(srcFirstSample, encoder.ChannelCount);
-  SetLength(srcData, encoder.ChannelCount, endSmp - startSmp + 1);
-  for iChannel := 0 to High(srcData) do
-  begin
-    srcFirstSample[iChannel] := TEncoder.makeFloatSample(encoder.srcData[iChannel, startSmp + 0]);
-
-    prevSmp := srcFirstSample[iChannel];
-    for iSample := 0 to endSmp - startSmp + 1 - 1 do
-    begin
-      smp := TEncoder.makeFloatSample(encoder.srcData[iChannel, startSmp + iSample]);
-      srcData[iChannel, iSample] := smp - prevSmp;
-      prevSmp := smp;
-    end;
-  end;
-
-  ChunkCount := (endSmp - startSmp + 1 - 1) div encoder.ChunkSize + 1;
 
   if encoder.Verbose then
     WriteLn('Frame #', index, #9, ChunkCount);
@@ -539,9 +517,25 @@ end;
 
 procedure TFrame.MakeChunks;
 var
-  iChannel, iChunk: Integer;
+  iSample, iChannel, iChunk: Integer;
+  prevSmp, smp: Double;
   chunk: TChunk;
 begin
+  SetLength(srcFirstSample, encoder.ChannelCount);
+  SetLength(srcData, encoder.ChannelCount, SampleCount);
+
+  for iChannel := 0 to encoder.ChannelCount - 1 do
+  begin
+    srcFirstSample[iChannel] := TEncoder.makeFloatSample(encoder.srcData[iChannel, StartSample]);
+    prevSmp := srcFirstSample[iChannel];
+    for iSample := 0 to SampleCount - 1 do
+    begin
+      smp := TEncoder.makeFloatSample(encoder.srcData[iChannel, StartSample + iSample]);
+      srcData[iChannel, iSample] := smp - prevSmp;
+      prevSmp := smp;
+    end;
+  end;
+
   finalChunks.Clear;
   finalChunks.Capacity := ChunkCount * encoder.ChannelCount;
 
@@ -558,7 +552,8 @@ end;
 
 procedure TFrame.ComputeAttenuations;
 var
-  iChannel, iChunk, iSample, iAtt, attCnt, pos, att, loIdx, hiIdx: Integer;
+  iChannel, iChunk, iSample, iAtt, attCnt, pos, loIdx, hiIdx: Integer;
+  att: Byte;
   chunkBuffer: TDoubleDynArray;
   chunk: TChunk;
 begin
@@ -681,7 +676,6 @@ begin
       chunk := TChunk.Create(Self, iChunk, nil);
       reducedChunks.Add(chunk);
 
-      chunkRefs[iChunk].MakeDstData;
       chunk.srcData := chunkRefs[iChunk].srcData;
       chunk.dstData := Copy(chunkRefs[iChunk].dstData);
     end;
@@ -1197,7 +1191,6 @@ begin
 {$ifdef ATARI_STE}
   ChunkSize := 5;
   ChunksPerAttenuation := 25;
-  AttenuationsPerAttenuationLaw := High(Word);
   FrameLength := 1000.0 / 3; // in ms
   ChunksPerFrame := 32;
 {$else}
@@ -1252,7 +1245,7 @@ begin
   Result := smp / High(SmallInt);
 end;
 
-class function TEncoder.makeOutputSample(smp: Double; OutBitDepth, Attenuation: Integer; Negative: Boolean): TOutputSample;
+class function TEncoder.makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean): TOutputSample;
 var
   obd: Integer;
   smp16, coeff: Double;
@@ -1266,7 +1259,7 @@ begin
   Result.AsDouble := EnsureRange(smp16, -obd, obd);
 end;
 
-class function TEncoder.makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Integer; Negative: Boolean): Double;
+class function TEncoder.makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean): Double;
 var
   obd, coeff: Double;
 begin
@@ -1278,7 +1271,7 @@ begin
   Result := EnsureRange(Result, -1.0, 1.0);
 end;
 
-class function TEncoder.SolveAttenuation(chunkSz: Integer; samples: PDouble): Integer;
+class function TEncoder.SolveAttenuation(chunkSz: Integer; samples: PDouble): Byte;
 var
   i, hiSmp: Integer;
   coeff: Double;
