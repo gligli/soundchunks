@@ -3,22 +3,20 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Active="Release_Atari_STe"/>
+    <BuildModes Active="Release"/>
     <Units Count="20">
       <Unit0>
         <Filename Value="encoder.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="237"/>
-        <CursorPos X="14" Y="257"/>
+        <CursorPos X="33" Y="17"/>
         <UsageCount Value="200"/>
         <Bookmarks Count="3">
-          <Item0 X="3" Y="1388" ID="3"/>
-          <Item1 Y="1253" Left="1" Top="1231" ID="1"/>
-          <Item2 Y="581" Left="1" Top="386" ID="2"/>
+          <Item0 Y="1300" ID="3"/>
+          <Item1 Y="1167" Left="1" Top="1145" ID="1"/>
+          <Item2 Y="559" Left="1" Top="379" ID="2"/>
         </Bookmarks>
         <Loaded Value="True"/>
-        <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit0>
       <Unit1>
         <Filename Value="alglib\conv.pas"/>
@@ -52,7 +50,7 @@
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
         <CursorPos Y="13"/>
-        <UsageCount Value="94"/>
+        <UsageCount Value="100"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit4>
       <Unit5>
@@ -163,12 +161,10 @@
       </Unit18>
       <Unit19>
         <Filename Value="alglib\ftbase.pas"/>
-        <EditorIndex Value="1"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="21"/>
         <CursorPos X="6" Y="41"/>
         <UsageCount Value="10"/>
-        <Loaded Value="True"/>
-        <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit19>
     </Units>
     <OtherDefines Count="1">
@@ -177,123 +173,123 @@
     <JumpHistory Count="30" HistoryIndex="29">
       <Position1>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1262" Column="26" TopLine="1239"/>
+        <Caret Line="432" TopLine="402"/>
       </Position1>
       <Position2>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="190" Column="15" TopLine="171"/>
+        <Caret Line="420" TopLine="402"/>
       </Position2>
       <Position3>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1031" Column="14" TopLine="1019"/>
+        <Caret Line="83" TopLine="55"/>
       </Position3>
       <Position4>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1030" Column="5" TopLine="1007"/>
+        <Caret Line="432" Column="158" TopLine="412"/>
       </Position4>
       <Position5>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1028" Column="20" TopLine="1007"/>
+        <Caret Line="17" Column="26"/>
       </Position5>
       <Position6>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1688" TopLine="1622"/>
+        <Caret Line="432" Column="181" TopLine="412"/>
       </Position6>
       <Position7>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1549" Column="25" TopLine="1532"/>
+        <Caret Line="489" Column="178" TopLine="469"/>
       </Position7>
       <Position8>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="187" Column="22" TopLine="155"/>
+        <Caret Line="583" Column="83" TopLine="557"/>
       </Position8>
       <Position9>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1316" Column="14" TopLine="1293"/>
+        <Caret Line="743" Column="91" TopLine="723"/>
       </Position9>
       <Position10>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="195" Column="17" TopLine="187"/>
+        <Caret Line="165" Column="59" TopLine="142"/>
       </Position10>
       <Position11>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1170" Column="25" TopLine="1144"/>
+        <Caret Line="428" Column="156" TopLine="408"/>
       </Position11>
       <Position12>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="187" Column="15" TopLine="182"/>
+        <Caret Line="444" Column="104" TopLine="424"/>
       </Position12>
       <Position13>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1306" Column="23" TopLine="1289"/>
+        <Caret Line="485" Column="153" TopLine="465"/>
       </Position13>
       <Position14>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1362" Column="3" TopLine="1342"/>
+        <Caret Line="579" Column="58" TopLine="559"/>
       </Position14>
       <Position15>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1376" TopLine="1356"/>
+        <Caret Line="723" Column="162" TopLine="700"/>
       </Position15>
       <Position16>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1362" Column="3" TopLine="1342"/>
+        <Caret Line="739" Column="66" TopLine="719"/>
       </Position16>
       <Position17>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="199" Column="28" TopLine="179"/>
+        <Caret Line="882" Column="200" TopLine="862"/>
       </Position17>
       <Position18>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="10" Column="3"/>
+        <Caret Line="1253" Column="42" TopLine="1228"/>
       </Position18>
       <Position19>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1558" Column="11" TopLine="1538"/>
+        <Caret Line="1262" Column="107" TopLine="1242"/>
       </Position19>
       <Position20>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1269" Column="3" TopLine="1249"/>
+        <Caret Line="1266" Column="42" TopLine="1246"/>
       </Position20>
       <Position21>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1277" Column="36" TopLine="1257"/>
+        <Caret Line="1274" Column="76" TopLine="1254"/>
       </Position21>
       <Position22>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1132" Column="3" TopLine="1112"/>
+        <Caret Line="1287" Column="39" TopLine="1267"/>
       </Position22>
       <Position23>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1131" Column="3" TopLine="1111"/>
+        <Caret Line="1292" Column="64" TopLine="1272"/>
       </Position23>
       <Position24>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="875" Column="18" TopLine="897"/>
+        <Caret Line="1295" Column="62" TopLine="1274"/>
       </Position24>
       <Position25>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="876" Column="3" TopLine="856"/>
+        <Caret Line="1451" Column="140" TopLine="1432"/>
       </Position25>
       <Position26>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="792" Column="33" TopLine="781"/>
+        <Caret Line="13" Column="18"/>
       </Position26>
       <Position27>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="577" Column="37" TopLine="557"/>
+        <Caret Line="1288" Column="11" TopLine="1271"/>
       </Position27>
       <Position28>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="342" Column="76" TopLine="322"/>
+        <Caret Line="164" Column="20" TopLine="59"/>
       </Position28>
       <Position29>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="303" Column="49" TopLine="298"/>
+        <Caret Line="119" Column="15" TopLine="82"/>
       </Position29>
       <Position30>
-        <Filename Value="alglib\ftbase.pas"/>
-        <Caret Line="41" Column="6" TopLine="21"/>
+        <Filename Value="encoder.lpr"/>
+        <Caret Line="859" Column="24" TopLine="849"/>
       </Position30>
     </JumpHistory>
     <RunParams>

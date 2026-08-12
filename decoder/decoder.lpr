@@ -3,15 +3,16 @@ program decoder;
 uses Types, SysUtils, Classes, Math, extern;
 
 const
-  CDecodedStreamVersion = 4;
+  CDecodedStreamVersion = 5;
+  CMaxAttenuationBits = 6;
+  CAttenuationLawDecibels = 0.75;
 
   CAttrShift = 16;
   CAttrMul: array[Boolean{12 bits?}] of Integer = ((1 shl (CAttrShift + (16 - 8))) - 1, (1 shl (CAttrShift + (16 - 12))) - 1);
-
-  CAttenuationLawNumerator = 1;
-  CMaxAttenuationBits = 5;
   CMaxAttenuation = (1 shl CMaxAttenuationBits) - 1;
-  CMaxAttenuationLawDiviverBits = 7;
+
+var
+  GAttenuationLookup : array[Boolean{12 bits?}, 0 .. CMaxAttenuation] of Integer;
 
   function CreateWAVHeader(channels: word; resolution: word; rate, size: longint): TWavHeader;
   var
@@ -34,22 +35,36 @@ const
     Result := wh;
   end;
 
+  procedure PrepareAttenuationLookup;
+  var
+    iAttenuation: Integer;
+    isChunkBitDepth12: Boolean;
+    law, lawAcc: Double;
+  begin
+    law := Power(10.0, -CAttenuationLawDecibels / 20.0);
+    lawAcc := 1.0;
+    for isChunkBitDepth12 := False to True do
+      for iAttenuation := 0 to CMaxAttenuation do
+      begin
+        GAttenuationLookup[isChunkBitDepth12, iAttenuation] := round(CAttrMul[isChunkBitDepth12] * lawAcc);
+        lawAcc *= law;
+      end;
+  end;
+
   procedure GSCUnpack(ASourceStream, ADestStream: TStream);
   var
-    iChunk, iAttenuation, iSample, iChannel, iVariableCoding, cpaCounter, apalCounter: Integer;
-    bitCount, variableCodingHeader, chunkAttenuation, attenuationLawDivider, finalSample, clippingErrors: Integer;
+    iChunk, iSample, iChannel, iVariableCoding, cpaCounter: Integer;
+    bitCount, variableCodingHeader, chunkAttenuation, finalSample, clippingErrors: Integer;
     delta, b, s1, s2: Integer;
     w: Word;
     channelSample: TIntegerDynArray;
     chunkIndex: TIntegerDynArray;
     chunkNegative, chunkReversed: TBooleanDynArray;
     StreamVersion, ChannelCount, ChunkBitDepth, ChunkSize, ChunkCount: Integer;
-    FrameLength, SampleRate, PiggyMaxCodingBits, ChunksPerAttenuation, AttenuationsPerAttenuationLaw: Integer;
+    FrameLength, SampleRate, PiggyMaxCodingBits, ChunksPerAttenuation: Integer;
     Chunks: TSmallIntDynArray2;
-    piggyCodings: array[0 .. 15] of Byte;
-    attenuationLookup : array[0 .. CMaxAttenuation] of Integer;
+    piggyCodings: TByteDynArray;
     memStream: TMemoryStream;
-    law, lawAcc: Double;
     bits: Cardinal;
 
     function GetBits(ABitCount: Integer): Integer;
@@ -72,7 +87,7 @@ const
 
     function Attenuate(ASample, AAttenuation: Integer): Integer;
     begin
-      Result := SarLongint(ASample * attenuationLookup[AAttenuation] + (1 shl (CAttrShift - 1)), CAttrShift);
+      Result := SarLongint(ASample * GAttenuationLookup[ChunkBitDepth = 12, AAttenuation] + (1 shl (CAttrShift - 1)), CAttrShift);
     end;
 
   begin
@@ -93,7 +108,7 @@ const
         PiggyMaxCodingBits := SampleRate shr 24;
         SampleRate := SampleRate and $ffffff;
         ChunksPerAttenuation := ASourceStream.ReadByte * ChannelCount;
-        AttenuationsPerAttenuationLaw := ASourceStream.ReadByte;
+        ASourceStream.ReadByte;
 
         if memStream.Position = 0 then
         begin
@@ -102,12 +117,12 @@ const
           writeln('ChannelCount = ', ChannelCount);
           writeln('ChunkBitDepth = ', ChunkBitDepth);
           writeln('ChunkSize = ', ChunkSize);
-          writeln('PiggyMaxCodingBits = ', PiggyMaxCodingBits);
         end;
 
         Assert(StreamVersion = CDecodedStreamVersion, 'StreamVersion not supported');
 
         SetLength(Chunks, ChunkCount, ChunkSize);
+        SetLength(piggyCodings, 1 shl PiggyMaxCodingBits);
 
         // depack Chunks
 
@@ -164,37 +179,18 @@ const
         variableCodingHeader := -1;
         chunkAttenuation := 0;
         cpaCounter := -1;
-        apalCounter := -1;
         for iChunk := 0 to FrameLength - 1 do
         begin
           for iChannel := 0 to ChannelCount - 1 do
           begin
+            FillBits;
+
             Dec(cpaCounter);
             if cpaCounter <= 0 then
             begin
-              FillBits;
-
-              Dec(apalCounter);
-              if apalCounter <= 0 then
-              begin
-                apalCounter := AttenuationsPerAttenuationLaw;
-                attenuationLawDivider := GetBits(CMaxAttenuationLawDiviverBits);
-
-                // compute chunkAttenuation law from attenuationLawDivider
-                law := CAttenuationLawNumerator / attenuationLawDivider;
-                lawAcc := 1.0;
-                for iAttenuation := 0 to CMaxAttenuation do
-                begin
-                  lawAcc += law * iAttenuation;
-                  attenuationLookup[iAttenuation] := round(CAttrMul[ChunkBitDepth = 12] / lawAcc);
-                end;
-              end;
-
               cpaCounter := ChunksPerAttenuation;
               chunkAttenuation := GetBits(CMaxAttenuationBits);
             end;
-
-            FillBits;
 
             chunkNegative[iChannel] := GetBits(1) <> 0;
             chunkReversed[iChannel] := GetBits(1) <> 0;
@@ -267,6 +263,8 @@ begin
     WriteLn;
     Exit;
   end;
+
+  PrepareAttenuationLookup;
 
   gscFN := ParamStr(1);
   if ParamCount > 1 then
