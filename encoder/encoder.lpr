@@ -10,8 +10,8 @@ const
   CStreamVersion = 5;
 
 {$ifdef ATARI_STE}
-  CMaxAttenuationBits = 4;
-  CAttenuationLawDecibels = 2.0;
+  CMaxAttenuationBits = 3;
+  CAttenuationLawDecibels = 1.5;
 {$else}
   CMaxAttenuationBits = 6;
   CAttenuationLawDecibels = 0.75;
@@ -55,6 +55,7 @@ type
   TLMC1992Filter = class(TCompandingFilter)
   const
     TONE_STEPS = 13;
+    NEUTRAL_TONE = 6;
   type
     TFirstOrder = record
       a1, b0, b1: Double;
@@ -168,16 +169,13 @@ type
     procedure MakeDstData;
     procedure SaveStream(AStream: TStream);
 
-    procedure MakeFrame;
+    procedure MakeFrame(AVerbose: Boolean = True);
+    procedure SolveCompandingFilterSettings;
   end;
-
-  TFrameList = specialize TFPGObjectList<TFrame>;
 
   { TEncoder }
 
   TEncoder = class
-  const
-    cDCTDamping = 1.0;
   type
     TOutputSample = record
       AsInt: SmallInt;
@@ -197,6 +195,7 @@ type
     AttenuationChunkRatioMul: Double;
     FrameLength: Double;
     PythonReduce: Boolean;
+    NoSolveFilterSettings: Boolean;
     DebugMode: Boolean;
 
     ChannelCount: Integer;
@@ -214,7 +213,7 @@ type
     srcData: TSmallIntDynArray2;
     dstData: TSmallIntDynArray2;
 
-    frames: TFrameList;
+    frames: array of TFrame;
 
     class function make16BitSample(smp: Double): SmallInt;
     class function makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean): TOutputSample;
@@ -401,7 +400,7 @@ begin
     dB -= 2.0;
   end;
 
-  Set_Tone_Level(6, 6); // no bass / treble boost
+  Set_Tone_Level(NEUTRAL_TONE, NEUTRAL_TONE); // no bass / treble boost
 
   gain := 1.0;
 end;
@@ -424,6 +423,7 @@ end;
 
 function TLMC1992Filter.DeFilter(s: Double): Double;
 begin
+  s := Round(s * High(Byte)) * (1.0 / High(Byte));
   Result := BiQuad(s, True);
 end;
 
@@ -735,7 +735,7 @@ begin
     flt := TLMC1992Filter.Create(encoder.SampleRate);
     TLMC1992Filter(flt).Set_Tone_Level(TLMC1992Filter.TONE_STEPS - 1, 0);
 {$else}
-    filter[iChannel] := TDeltaFilter.Create(encoder.SampleRate);
+    flt := TDeltaFilter.Create(encoder.SampleRate);
 {$endif}
 
     filter[iChannel] := flt;
@@ -782,6 +782,9 @@ begin
       srcData[iChannel, iSample] := filter[iChannel].PreFilter(smp);
     end;
   end;
+
+  chunkRefs.Clear;
+  reducedChunks.Clear;
 
   finalChunks.Clear;
   finalChunks.Capacity := ChunkCount * encoder.ChannelCount;
@@ -1090,17 +1093,59 @@ begin
   dstPiggyCoder.Render(AStream);
 end;
 
-procedure TFrame.MakeFrame;
+procedure TFrame.MakeFrame(AVerbose: Boolean);
 begin
+  Inc(encoder.FramesLeft);
+
   MakeChunks;
   ComputeAttenuations;
-  Write('.');
+  if AVerbose then Write('.');
   Reduce;
-  Write('.');
+  if AVerbose then Write('.');
   Reconstruct;
-  Write('.');
+  if AVerbose then Write('.');
   MakeDstData;
-  Write('.');
+  if AVerbose then Write('.');
+end;
+
+procedure TFrame.SolveCompandingFilterSettings;
+var
+  iChannel, iSample, iBass, iTreb, bestBass, bestTreb: Integer;
+  v, best: Double;
+begin
+{$ifdef ATARI_STE}
+  bestBass := -1;
+  bestTreb := -1;
+  best := Infinity;
+
+  iBass := TLMC1992Filter.TONE_STEPS - 1;
+
+  for iTreb := 0 to TLMC1992Filter.TONE_STEPS - 1 do
+  begin
+    for iChannel := 0 to encoder.ChannelCount - 1 do
+      TLMC1992Filter(filter[iChannel]).Set_Tone_Level(iBass, iTreb);
+
+    MakeFrame(False);
+
+    v := 0.0;
+    for iChannel := 0 to encoder.ChannelCount - 1 do
+      for iSample := 0 to SampleCount - 1 do
+        v += Abs(TEncoder.makeFloatSample(encoder.srcData[iChannel, StartSample + iSample]) - dstData[iChannel, iSample]);
+
+    if v < best then
+    begin
+      best := v;
+      bestBass := iBass;
+      bestTreb := iTreb;
+    end;
+  end;
+
+  for iChannel := 0 to encoder.ChannelCount - 1 do
+    TLMC1992Filter(filter[iChannel]).Set_Tone_Level(bestBass, bestTreb);
+
+  MakeFrame;
+  //WriteLn(index:4, bestBass:4, bestTreb:4, best * High(SmallInt) / (SampleCount * encoder.ChannelCount):12:3);
+{$endif}
 end;
 
 procedure TFrame.MakeDstData;
@@ -1272,7 +1317,7 @@ const
   CAttenuationMilliseconds = 2.0;
   CVariableCodingRatio = 0.7;
 var
-  j, i, k, nextStart, psc, tentativeByteSize: Integer;
+  j, i, frmIdx, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
   headerCost, chunksCost, indexingCost: Double;
   avgPower, totalPower, perFramePower, curPower, smp: Double;
@@ -1379,9 +1424,10 @@ begin
     writeln('PerFramePower = ', Round(perFramePower / High(SmallInt)));
   end;
 
-  k := 0;
+  frmIdx := 0;
   nextStart := 0;
   curPower := 0;
+  SetLength(frames, FrameCount);
   for i := 0 to SampleCount - 1 do
   begin
     smp := 0;
@@ -1393,27 +1439,30 @@ begin
 
     if (i mod BlockSampleCount = 0) and (curPower >= perFramePower) then
     begin
-      frm := TFrame.Create(Self, k, nextStart, i - 1);
-      frames.Add(frm);
+      frm := TFrame.Create(Self, frmIdx, nextStart, i - 1);
+      frames[frmIdx] := frm;
+      Inc(frmIdx);
 
       curPower := 0;
       nextStart := i;
-      Inc(k);
     end;
   end;
 
-  frm := TFrame.Create(Self, k, nextStart, SampleCount - 1);
-  frames.Add(frm);
+  frm := TFrame.Create(Self, frmIdx, nextStart, SampleCount - 1);
+  frames[frmIdx] := frm;
+  Inc(frmIdx);
 
-  FrameCount := frames.Count;
-  FramesLeft := FrameCount;
+  Assert(frmIdx = FrameCount);
 end;
 
 procedure TEncoder.MakeFrames;
 
   procedure DoFrame(Index: PtrInt; Data: Pointer);
   begin
-    frames[Index].MakeFrame;
+    if NoSolveFilterSettings then
+      frames[Index].MakeFrame
+    else
+      frames[Index].SolveCompandingFilterSettings;
   end;
 
 begin
@@ -1430,7 +1479,6 @@ begin
 
   BitRate := -1;
   ChunkBitDepth := 8;
-  VariableFrameSizeRatio := 1.0;
   AttenuationChunkRatioMul := 1.0;
   PythonReduce := False;
   Precision := 3;
@@ -1440,20 +1488,21 @@ begin
   ChunksPerAttenuation := 25;
   FrameLength := 1000.0 / 3; // in ms
   ChunksPerFrame := 32;
+  NoSolveFilterSettings := False;
+  VariableFrameSizeRatio := 0.0;
 {$else}
   ChunkSize := 4;
   ChunksPerAttenuation := 16;
   FrameLength := 10000; // in ms
   ChunksPerFrame := 8192;
+  NoSolveFilterSettings := True;
+  VariableFrameSizeRatio := 1.0;
 {$endif}
 
-  frames := TFrameList.Create;
 end;
 
 destructor TEncoder.Destroy;
 begin
-  frames.Free;
-
   inherited Destroy;
 end;
 
@@ -1468,7 +1517,7 @@ begin
   for iChannel := 0 to ChannelCount - 1 do
   begin
     pos := 0;
-    for iFrame := 0 to frames.Count - 1 do
+    for iFrame := 0 to FrameCount - 1 do
       for iSample := 0 to frames[iFrame].SampleCount - 1 do
       begin
         dstData[iChannel, pos] := make16BitSample(frames[iFrame].dstData[iChannel, iSample]);
@@ -1548,13 +1597,11 @@ var
 begin
   for k := 0 to chunkSz - 1 do
   begin
-    s := ifthen(k = 0, sqrt(0.5), 1.0);
-
     sum := 0;
     for n := 0 to chunkSz - 1 do
-      sum += s * samples[n] * cos(pi / chunkSz * (n + 0.5) * k);
+      sum += samples[n] * cos(pi / chunkSz * (n + 0.5) * k);
 
-    dct^ := sum * sqrt (2.0 / chunkSz) / (k + cDCTDamping);
+    dct^ := sum * sqrt (2.0 / chunkSz);
     Inc(dct);
   end;
 end;
@@ -1566,9 +1613,9 @@ var
 begin
   for k := 0 to chunkSz - 1 do
   begin
-    sum := sqrt(0.5) * dct[0] * (0 + cDCTDamping);
+    sum := 0.5 * dct[0];
     for n := 1 to chunkSz - 1 do
-      sum += dct[n] * (n + cDCTDamping) * cos (pi / chunkSz * (k + 0.5) * n);
+      sum += dct[n] * cos (pi / chunkSz * (k + 0.5) * n);
 
     samples^ := sum * sqrt(2.0 / chunkSz);
     Inc(samples);
@@ -1691,9 +1738,6 @@ begin
     SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS);
 {$endif}
 
-    //test_makeSample;
-
-
     if ParamCount < 2 then
     begin
       WriteLn('Usage: ', ExtractFileName(ParamStr(0)) + ' <source file> <dest file> [options]');
@@ -1709,6 +1753,9 @@ begin
       WriteLn(#9'-cbd'#9'chunk bit depth (8,12)');
       WriteLn(#9'-pr'#9'K-means precision; 0: "lossless" mode');
       WriteLn(#9'-att'#9'attenuation to chunk ratio multiplier (0.1-10.0)');
+{$ifdef ATARI_STE}
+      WriteLn(#9'-nsfs'#9'Don''t solve filter settings (faster!)');
+{$endif}
       WriteLn(#9'-py'#9'python cluster.py reducer');
 
       WriteLn;
@@ -1729,6 +1776,9 @@ begin
       enc.ChunksPerFrame := EnsureRange(round(ParamValue('-cpf', enc.ChunksPerFrame)), CMinChunksPerFrame, CMaxChunksPerFrame);
       enc.Verbose := HasParam('-v');
       enc.PythonReduce := HasParam('-py');
+{$ifdef ATARI_STE}
+      enc.NoSolveFilterSettings := HasParam('-nsfs');
+{$endif}
       enc.DebugMode := HasParam('-d');
 
       WriteLn('BitRate = ', FloatToStr(enc.BitRate));
