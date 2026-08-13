@@ -526,7 +526,9 @@ begin
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
   begin
-    srcFirstSample[iChannel] := TEncoder.makeFloatSample(encoder.srcData[iChannel, StartSample]);
+    srcFirstSample[iChannel] := 0.0;
+    if StartSample > 0 then
+      srcFirstSample[iChannel] := TEncoder.makeFloatSample(encoder.srcData[iChannel, StartSample - 1]);
     prevSmp := srcFirstSample[iChannel];
     for iSample := 0 to SampleCount - 1 do
     begin
