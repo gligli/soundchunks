@@ -36,7 +36,6 @@
           <Parsing>
             <Style Value="1"/>
             <SyntaxOptions>
-              <SyntaxMode Value="Delphi"/>
               <IncludeAssertionCode Value="True"/>
               <TypedAddress Value="True"/>
             </SyntaxOptions>
@@ -80,7 +79,6 @@
           <Parsing>
             <Style Value="1"/>
             <SyntaxOptions>
-              <SyntaxMode Value="Delphi"/>
               <IncludeAssertionCode Value="True"/>
               <TypedAddress Value="True"/>
             </SyntaxOptions>
@@ -100,11 +98,10 @@
           <Linking>
             <Debugging>
               <DebugInfoType Value="dsDwarf3"/>
-              <UseExternalDbgSyms Value="True"/>
             </Debugging>
           </Linking>
           <Other>
-            <CustomOptions Value="-dRELEASE
+            <CustomOptions Value="-dDEBUG
 -dATARI_STE"/>
             <OtherDefines Count="1">
               <Define0 Value="DEBUG"/>
@@ -130,7 +127,6 @@
           <Parsing>
             <Style Value="1"/>
             <SyntaxOptions>
-              <SyntaxMode Value="Delphi"/>
               <IncludeAssertionCode Value="True"/>
               <TypedAddress Value="True"/>
             </SyntaxOptions>
@@ -166,13 +162,13 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="..\else3_st.wav ..\st -v -d -br48"/>
+        <CommandLineParams Value="..\else3_st.wav ..\st -v -d -cpf22 -nsfs -fl1e6"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="..\else3_st.wav ..\st -v -d -br48"/>
+            <CommandLineParams Value="..\else3_st.wav ..\st -v -d -cpf22 -nsfs -fl1e6"/>
           </local>
         </Mode0>
       </Modes>
@@ -215,7 +211,6 @@
       <Style Value="1"/>
       <SyntaxOptions>
         <IncludeAssertionCode Value="True"/>
-        <CPPInline Value="False"/>
         <TypedAddress Value="True"/>
       </SyntaxOptions>
     </Parsing>

@@ -741,7 +741,6 @@ begin
   begin
     Assert(overallBitCnt <= 16);
     AStream.WriteWord(overallBits and $ffff);
-    overallBits := overallBits shr 16;
   end;
 end;
 
@@ -1149,6 +1148,9 @@ begin
   AStream.WriteDWord(w and $ffffffff);
   w := encoder.ChunksPerAttenuation;
   AStream.WriteWord(w and $ffff);
+{$else}
+  Assert(reducedChunks.Count - 1 <= High(Byte));
+  AStream.WriteByte(reducedChunks.Count - 1);
 {$endif}
 
   cl := reducedChunks;
@@ -1192,8 +1194,8 @@ begin
     AStream.WriteWord(w and $ffff);
   end;
 {$else}
-  Assert(plainChunks.Count div encoder.ChannelCount <= High(Word));
-  AStream.WriteWord(NtoBE(WORD(plainChunks.Count div encoder.ChannelCount)));
+  Assert(plainChunks.Count div encoder.ChannelCount - 1 <= High(Word));
+  AStream.WriteWord(NtoBE(WORD(plainChunks.Count div encoder.ChannelCount - 1)));
 {$endif}
 
   dstPiggyCoder.Render(AStream);
@@ -1548,7 +1550,7 @@ begin
 
     if (i mod BlockSampleCount = 0) and (curPower >= perFramePower) then
     begin
-      if frmIdx >= FrameCount then
+      if frmIdx >= Length(frames) then
         SetLength(frames, frmIdx + 1);
 
       frm := TFrame.Create(Self, frmIdx, nextStart, i - 1);
@@ -1560,7 +1562,7 @@ begin
     end;
   end;
 
-  if frmIdx >= FrameCount then
+  if frmIdx >= Length(frames) then
     SetLength(frames, frmIdx + 1);
 
   frm := TFrame.Create(Self, frmIdx, nextStart, SampleCount - 1);
@@ -1568,6 +1570,7 @@ begin
   Inc(frmIdx);
 
   SetLength(frames, frmIdx);
+  FrameCount := frmIdx;
 end;
 
 procedure TEncoder.MakeFrames;
