@@ -162,13 +162,13 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="..\else3_st.wav ..\st -v -d -cpf22 -nsfs -fl1e6"/>
+        <CommandLineParams Value="..\else3_st.wav ..\st -cpf24 -nsfs"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="..\else3_st.wav ..\st -v -d -cpf22 -nsfs -fl1e6"/>
+            <CommandLineParams Value="..\else3_st.wav ..\st -cpf24 -nsfs"/>
           </local>
         </Mode0>
       </Modes>

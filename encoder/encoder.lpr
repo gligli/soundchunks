@@ -1209,7 +1209,9 @@ begin
   ComputeAttenuations;
   if AVerbose then Write('.');
   Reduce;
+  Reconstruct;
   if AVerbose then Write('.');
+  Reduce;
   Reconstruct;
   if AVerbose then Write('.');
   MakeDstData;

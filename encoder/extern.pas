@@ -101,6 +101,11 @@ type
 
   PYakmo = ^TYakmo;
 
+  TBIRCH = record
+  end;
+
+  PBIRCH = ^TBIRCH;
+
 procedure SpinEnter(Lock: PSpinLock); register; assembler;
 procedure SpinEnterSleep(Lock: PSpinLock); register; assembler;
 procedure SpinLeave(Lock: PSpinLock); register; assembler;
@@ -147,6 +152,13 @@ procedure yakmo_load_train_data(ay: PYakmo; rowCount: Cardinal; colCount: Cardin
 procedure yakmo_load_train_data_weighted(ay: PYakmo; rowCount: Cardinal; colCount: Cardinal; dataset: PPDouble; weights: PCardinal); stdcall; external 'yakmo.dll';
 procedure yakmo_train_on_data(ay: PYakmo; pointToCluster: PInteger); stdcall; external 'yakmo.dll';
 procedure yakmo_get_centroids(ay: PYakmo; centroids: PPDouble); stdcall; external 'yakmo.dll';
+
+function birch_create(dist_threshold: Single; k_limit: UInt64; rebuild_interval: Cardinal): PBIRCH; stdcall; external 'BIRCH.dll';
+procedure birch_destroy(birch: PBIRCH); stdcall; external 'BIRCH.dll';
+procedure birch_insert_line(birch: PBIRCH; line: PDouble); stdcall; external 'BIRCH.dll';
+function birch_compute(birch: PBIRCH; extend, cluster: LongBool): Cardinal; stdcall; external 'BIRCH.dll';
+procedure birch_get_centroids(birch: PBIRCH; centroids: PDouble); stdcall; external 'BIRCH.dll';
+procedure birch_get_clusters(birch: PBIRCH; dataset: PDouble; rows: Cardinal; pointToCluster: PInteger); stdcall; external 'BIRCH.dll';
 
 function eaqualCreateInstance: Pointer; cdecl; external 'libEAQUAL.dll';
 procedure eaqualKillInstance(pInstance: Pointer); cdecl; external 'libEAQUAL.dll';
