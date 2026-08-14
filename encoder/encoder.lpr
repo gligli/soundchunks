@@ -189,7 +189,7 @@ type
   public
     inputFN, outputFN: String;
 
-    BitRate: Integer;
+    BitRate: Double;
     Precision: Integer;
     ChunkBitDepth: Integer; // 8 or 12 Bits
     ChunkSize: Integer;
@@ -245,7 +245,7 @@ type
     procedure MakeFrames;
     procedure MakeDstData;
 
-    function ComputeEAQUAL(chunkSz: Integer; UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
+    function ComputeEAQUAL(UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
 
     property ThreadsPerFrame: Cardinal read GetThreadsPerFrame;
   end;
@@ -1013,7 +1013,7 @@ begin
       chunk := TChunk.Create(Self, iChunk, nil);
       reducedChunks.Add(chunk);
 
-      for iSample := 0 to encoder.ChunkSize - 1 do
+      for iSample := 0 to colCount - 1 do
         Centroids[iChunk, iSample] := NanDef(Centroids[iChunk, iSample], 0.0);
 
       chunk.ComputeFromInvDCT(@Centroids[iChunk, 0]);
@@ -1220,41 +1220,44 @@ end;
 
 procedure TFrame.SolveCompandingFilterSettings;
 var
-  iChannel, iSample, iBass, iTreb, bestBass, bestTreb: Integer;
+  iChannel, iSample, iTreb, bestTreb: Integer;
   v, best: Double;
+  ref: TDoubleDynArray2;
 begin
 {$ifdef ATARI_STE}
-  bestBass := -1;
+  SetLength(ref, encoder.ChannelCount, SampleCount);
+
+  for iChannel := 0 to encoder.ChannelCount - 1 do
+    for iSample := 0 to SampleCount - 1 do
+      ref[iChannel, iSample] := TEncoder.makeFloatSample(encoder.srcData[iChannel, StartSample + iSample]);
+
   bestTreb := -1;
   best := Infinity;
-
-  iBass := TLMC1992Filter.TONE_STEPS - 1;
 
   for iTreb := 0 to TLMC1992Filter.TONE_STEPS - 1 do
   begin
     for iChannel := 0 to encoder.ChannelCount - 1 do
-      TLMC1992Filter(filter[iChannel]).Set_Tone_Level(iBass, iTreb);
+      TLMC1992Filter(filter[iChannel]).Set_Tone_Level(TLMC1992Filter.TONE_STEPS - 1, iTreb);
 
     MakeFrame(False);
 
     v := 0.0;
-    for iChannel := 0 to encoder.ChannelCount - 1 do
-      for iSample := 0 to SampleCount - 1 do
-        v += Abs(TEncoder.makeFloatSample(encoder.srcData[iChannel, StartSample + iSample]) - dstData[iChannel, iSample]);
+		for iChannel := 0 to encoder.ChannelCount - 1 do
+		  for iSample := 0 to SampleCount - 1 do
+    		v += Abs(ref[iChannel, iSample] - dstData[iChannel, iSample]);
 
     if v < best then
     begin
       best := v;
-      bestBass := iBass;
       bestTreb := iTreb;
     end;
   end;
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
-    TLMC1992Filter(filter[iChannel]).Set_Tone_Level(bestBass, bestTreb);
+    TLMC1992Filter(filter[iChannel]).Set_Tone_Level(TLMC1992Filter.TONE_STEPS - 1, bestTreb);
 
   MakeFrame;
-  //WriteLn(index:4, bestBass:4, bestTreb:4, best * High(SmallInt) / (SampleCount * encoder.ChannelCount):12:3);
+  //WriteLn(index:4, bestTreb:4, best * High(SmallInt) / (SampleCount * encoder.ChannelCount):12:3);
 {$endif}
 end;
 
@@ -1407,7 +1410,7 @@ begin
     Result := cur.size * (8 / 1024) / (SampleCount / SampleRate); // returns bitrate
 
     writeln('FinalByteSize = ', cur.Size);
-    writeln('FinalBitRate = ', round(Result));
+    writeln('FinalBitRate = ', Result:5:2);
   finally
     fs.Free;
     cur.Free;
@@ -1450,7 +1453,7 @@ begin
     for i := psc to SampleCount - 1 do
       srcData[j, i] := 0;
 
-  if BitRate > 0 then
+  if not IsInfinite(BitRate) then
     ProjectedByteSize := ceil((SampleCount / SampleRate) * (BitRate * 1024 / 8))
   else
     ProjectedByteSize := MaxInt;
@@ -1549,6 +1552,9 @@ begin
 
     if (i mod BlockSampleCount = 0) and (curPower >= perFramePower) then
     begin
+      if frmIdx >= FrameCount then
+        SetLength(frames, frmIdx + 1);
+
       frm := TFrame.Create(Self, frmIdx, nextStart, i - 1);
       frames[frmIdx] := frm;
       Inc(frmIdx);
@@ -1558,11 +1564,14 @@ begin
     end;
   end;
 
+  if frmIdx >= FrameCount then
+    SetLength(frames, frmIdx + 1);
+
   frm := TFrame.Create(Self, frmIdx, nextStart, SampleCount - 1);
   frames[frmIdx] := frm;
   Inc(frmIdx);
 
-  Assert(frmIdx = FrameCount);
+  SetLength(frames, frmIdx);
 end;
 
 procedure TEncoder.MakeFrames;
@@ -1587,7 +1596,7 @@ begin
   inputFN := InFN;
   outputFN := OutFN;
 
-  BitRate := -1;
+  BitRate := Infinity;
   ChunkBitDepth := 8;
   AttenuationChunkRatioMul := 1.0;
   PythonReduce := False;
@@ -1595,10 +1604,10 @@ begin
 
 {$ifdef ATARI_STE}
   ChunkSize := 5;
+  ChunksPerFrame := 64;
   ChunksPerAttenuation := 25;
   FrameLength := 1000.0 / 3; // in ms
   VariableFrameSizeRatio := 0.0;
-  ChunksPerFrame := 32;
   PiggyCodingBlocksBits := 1;
   PiggyCodingSolveByValue := True;
   NoSolveFilterSettings := False;
@@ -1642,7 +1651,7 @@ end;
 
 function TEncoder.GetThreadsPerFrame: Cardinal;
 begin
-  Result := iDivDef(NumberOfProcessors - 1, FramesLeft, 1) + 1;
+  Result := Max(1, iDivDef(NumberOfProcessors, FramesLeft, NumberOfProcessors));
 end;
 
 class function TEncoder.make16BitSample(smp: Double): SmallInt;
@@ -1707,7 +1716,7 @@ end;
 class procedure TEncoder.ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
 var
   k, n: Integer;
-  sum, s: Double;
+  sum: Double;
 begin
   for k := 0 to chunkSz - 1 do
   begin
@@ -1767,7 +1776,7 @@ begin
   Result.Y := Result.Y / Length(dctA);
 end;
 
-function TEncoder.ComputeEAQUAL(chunkSz: Integer; UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
+function TEncoder.ComputeEAQUAL(UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
 var
   FNTmp, FNRef, FNTst: String;
 begin
@@ -1839,7 +1848,30 @@ begin
   end;
 end;
 
+procedure test_dct_idct;
+const
+  CIter = 1000;
+  CLen = 16;
 var
+  iIter, iDCT: Integer;
+  test: array[0 .. CLen - 1] of Double;
+  dct: array[0 .. CLen - 1] of Double;
+  invdct: array[0 .. CLen - 1] of Double;
+begin
+  RandSeed := $42381337;
+  for iIter := 0 to CIter - 1 do
+  begin
+    for iDCT := 0 to CLen - 1 do
+      test[iDCT] := Random * 2.0 - 1.0;
+    TEncoder.ComputeDCT(CLen, @test[0], @dct[0]);
+    TEncoder.ComputeInvDCT(CLen, @dct[0], @invdct[0]);
+    for iDCT := 0 to CLen - 1 do
+      Assert(SameValue(test[iDCT], invdct[iDCT], 1e-6));
+  end;
+end;
+
+var
+  iChannel: Integer;
   enc: TEncoder;
   psyA: Complex;
 begin
@@ -1851,6 +1883,8 @@ begin
 {$else}
     SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS);
 {$endif}
+
+    test_dct_idct;
 
     if ParamCount < 2 then
     begin
@@ -1880,7 +1914,7 @@ begin
 
     enc := TEncoder.Create(ParamStr(1), ParamStr(2));
     try
-      enc.BitRate := round(ParamValue('-br', enc.BitRate));
+      enc.BitRate := ParamValue('-br', enc.BitRate);
       enc.Precision := round(ParamValue('-pr', enc.Precision));
       enc.VariableFrameSizeRatio := EnsureRange(ParamValue('-vfr', enc.VariableFrameSizeRatio), 0.0, 1.0);
       enc.AttenuationChunkRatioMul := EnsureRange(ParamValue('-att', enc.AttenuationChunkRatioMul), 0.1, 10.0);

@@ -166,13 +166,13 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="..\lame_test\else3.wav ..\st.wav -d -cpf24"/>
+        <CommandLineParams Value="..\else3_st.wav ..\st -v -d -br48"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="..\lame_test\else3.wav ..\st.wav -d -cpf24"/>
+            <CommandLineParams Value="..\else3_st.wav ..\st -v -d -br48"/>
           </local>
         </Mode0>
       </Modes>
