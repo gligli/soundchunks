@@ -151,7 +151,7 @@ type
     SampleCount: Integer;
     FrameSize: Integer;
 
-    chunkRefs, reducedChunks, finalChunks: TChunkList;
+    plainChunks, reducedChunks: TChunkList;
 
     srcFirstSample: TDoubleDynArray;
 
@@ -834,9 +834,8 @@ begin
   SampleCount := endSmp - startSmp + 1;
   ChunkCount := (SampleCount - 1) div encoder.ChunkSize + 1;
 
-  chunkRefs := TChunkList.Create(False);
   reducedChunks := TChunkList.Create;
-  finalChunks := TChunkList.Create;
+  plainChunks := TChunkList.Create;
 
   SetLength(filter, encoder.ChannelCount);
   for iChannel := 0 to encoder.ChannelCount - 1 do
@@ -862,9 +861,8 @@ begin
   for iChannel := 0 to encoder.ChannelCount - 1 do
     filter[iChannel].Free;
 
-  chunkRefs.Free;
   reducedChunks.Free;
-  finalChunks.Free;
+  plainChunks.Free;
   dstPiggyCoder.Free;
 
   inherited Destroy;
@@ -893,11 +891,10 @@ begin
     end;
   end;
 
-  chunkRefs.Clear;
   reducedChunks.Clear;
 
-  finalChunks.Clear;
-  finalChunks.Capacity := ChunkCount * encoder.ChannelCount;
+  plainChunks.Clear;
+  plainChunks.Capacity := ChunkCount * encoder.ChannelCount;
 
   for iChunk := 0 to ChunkCount - 1 do
     for iChannel := 0 to encoder.ChannelCount - 1 do
@@ -905,8 +902,7 @@ begin
       chunk := TChunk.Create(Self, iChunk, @srcData[iChannel, iChunk * encoder.ChunkSize]);
       chunk.channel := iChannel;
       chunk.ComputeDstAttributes;
-      finalChunks.Add(chunk);
-      chunkRefs.Add(chunk);
+      plainChunks.Add(chunk);
     end;
 end;
 
@@ -929,7 +925,7 @@ begin
     for iChunk := loIdx to hiIdx do
       for iChannel := 0 to encoder.ChannelCount - 1 do
       begin
-        chunk := chunkRefs[iChunk * encoder.ChannelCount + iChannel];
+        chunk := plainChunks[iChunk * encoder.ChannelCount + iChannel];
 
         for iSample := 0 to encoder.ChunkSize - 1 do
         begin
@@ -942,7 +938,7 @@ begin
 
     for iChunk := loIdx to hiIdx do
       for iChannel := 0 to encoder.ChannelCount - 1 do
-        chunkRefs[iChunk * encoder.ChannelCount + iChannel].dstAttenuation := att;
+        plainChunks[iChunk * encoder.ChannelCount + iChannel].dstAttenuation := att;
   end;
 end;
 
@@ -967,12 +963,12 @@ begin
   colCount := encoder.ChunkSize;
   clusterCount := encoder.ChunksPerFrame;
 
-  SetLength(Dataset, chunkRefs.Count);
+  SetLength(Dataset, plainChunks.Count);
 
-  for iChunk := 0 to chunkRefs.Count - 1 do
-    Dataset[iChunk] := chunkRefs[iChunk].ComputeDCT;
+  for iChunk := 0 to plainChunks.Count - 1 do
+    Dataset[iChunk] := plainChunks[iChunk].ComputeDCT;
 
-  if (prec > 0) and (chunkRefs.Count > clusterCount) then
+  if (prec > 0) and (plainChunks.Count > clusterCount) then
   begin
     // usual chunk reduction
 
@@ -1019,10 +1015,10 @@ begin
       chunk.ComputeFromInvDCT(@Centroids[iChunk, 0]);
   	end;
 
-    for iChunk := 0 to chunkRefs.Count - 1 do
+    for iChunk := 0 to plainChunks.Count - 1 do
     begin
-      chunkRefs[iChunk].reducedChunk := reducedChunks[Clusters[iChunk]];
-      Inc(chunkRefs[iChunk].reducedChunk.useCount);
+      plainChunks[iChunk].reducedChunk := reducedChunks[Clusters[iChunk]];
+      Inc(plainChunks[iChunk].reducedChunk.useCount);
     end;
   end
   else
@@ -1030,21 +1026,21 @@ begin
     // passthrough mode
 
     reducedChunks.Clear;
-    reducedChunks.Capacity := chunkRefs.Count;
+    reducedChunks.Capacity := plainChunks.Count;
     for iChunk := 0 to reducedChunks.Capacity - 1 do
     begin
       chunk := TChunk.Create(Self, iChunk, nil);
       reducedChunks.Add(chunk);
 
-      chunkRefs[iChunk].MakeDstData;
-      chunk.srcData := chunkRefs[iChunk].srcData;
-      chunk.dstData := Copy(chunkRefs[iChunk].dstData);
+      plainChunks[iChunk].MakeDstData;
+      chunk.srcData := plainChunks[iChunk].srcData;
+      chunk.dstData := Copy(plainChunks[iChunk].dstData);
     end;
 
-    for iChunk := 0 to chunkRefs.Count - 1 do
+    for iChunk := 0 to plainChunks.Count - 1 do
     begin
-      chunkRefs[iChunk].reducedChunk := reducedChunks[iChunk];
-      Inc(chunkRefs[iChunk].reducedChunk.useCount);
+      plainChunks[iChunk].reducedChunk := reducedChunks[iChunk];
+      Inc(plainChunks[iChunk].reducedChunk.useCount);
     end;
   end;
 
@@ -1094,9 +1090,9 @@ begin
 
   KDT := ann_kdtree_create(PPANNFloat(@Dataset[0]), Length(Dataset), encoder.ChunkSize, 1, ANN_KD_STD);
   try
-    for iChunk := 0 to chunkRefs.Count - 1 do
+    for iChunk := 0 to plainChunks.Count - 1 do
     begin
-      chunk := chunkRefs[iChunk];
+      chunk := plainChunks[iChunk];
 
       attCoeff := encoder.ComputeAttenuation(chunk.dstAttenuation);
 
@@ -1188,7 +1184,7 @@ begin
   end;
 
 {$ifndef ATARI_STE}
-  AStream.WriteDWord(finalChunks.Count div encoder.ChannelCount);
+  AStream.WriteDWord(plainChunks.Count div encoder.ChannelCount);
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
   begin
@@ -1196,8 +1192,8 @@ begin
     AStream.WriteWord(w and $ffff);
   end;
 {$else}
-  Assert(finalChunks.Count div encoder.ChannelCount <= High(Word));
-  AStream.WriteWord(NtoBE(WORD(finalChunks.Count div encoder.ChannelCount)));
+  Assert(plainChunks.Count div encoder.ChannelCount <= High(Word));
+  AStream.WriteWord(NtoBE(WORD(plainChunks.Count div encoder.ChannelCount)));
 {$endif}
 
   dstPiggyCoder.Render(AStream);
@@ -1279,9 +1275,9 @@ begin
     filter[iChannel].DeFilter(srcFirstSample[iChannel]);
   end;
 
-  for iChunk := 0 to finalChunks.Count - 1 do
+  for iChunk := 0 to plainChunks.Count - 1 do
   begin
-    chunk := finalChunks[iChunk];
+    chunk := plainChunks[iChunk];
 
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
@@ -1294,16 +1290,16 @@ begin
     end;
   end;
 
-  SetLength(piggyCodes, finalChunks.Count);
-  for iChunk := 0 to finalChunks.Count - 1 do
+  SetLength(piggyCodes, plainChunks.Count);
+  for iChunk := 0 to plainChunks.Count - 1 do
   begin
-    piggyCodes[iChunk].Code := finalChunks[iChunk].reducedChunk.index;
-    piggyCodes[iChunk].ExtraBits := Ord(finalChunks[iChunk].dstNegative) or (Ord(finalChunks[iChunk].dstReversed) shl 1);
+    piggyCodes[iChunk].Code := plainChunks[iChunk].reducedChunk.index;
+    piggyCodes[iChunk].ExtraBits := Ord(plainChunks[iChunk].dstNegative) or (Ord(plainChunks[iChunk].dstReversed) shl 1);
     piggyCodes[iChunk].ExtraBitCount := 2;
 
     if iChunk mod (encoder.ChunksPerAttenuation * encoder.ChannelCount) = 0 then
     begin
-      piggyCodes[iChunk].ExtraBits := (piggyCodes[iChunk].ExtraBits shl CMaxAttenuationBits) or finalChunks[iChunk].dstAttenuation;
+      piggyCodes[iChunk].ExtraBits := (piggyCodes[iChunk].ExtraBits shl CMaxAttenuationBits) or plainChunks[iChunk].dstAttenuation;
       piggyCodes[iChunk].ExtraBitCount += CMaxAttenuationBits;
     end;
   end;
