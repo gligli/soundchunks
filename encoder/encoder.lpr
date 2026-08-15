@@ -26,9 +26,9 @@ type
   TFrame = class;
   TChunk = class;
 
-  { TCompandingFilter }
+  { TEmphasisFilter }
 
-  TCompandingFilter = class
+  TEmphasisFilter = class
   protected
     sampleRate: Integer;
   public
@@ -40,7 +40,7 @@ type
 
   { TDeltaFilter }
 
-  TDeltaFilter = class(TCompandingFilter)
+  TDeltaFilter = class(TEmphasisFilter)
   private
     prevSample: Double;
     accSample: Double;
@@ -52,7 +52,7 @@ type
 
   { TLMC1992Filter }
 
-  TLMC1992Filter = class(TCompandingFilter)
+  TLMC1992Filter = class(TEmphasisFilter)
   const
     TONE_STEPS = 13;
     NEUTRAL_TONE = 6;
@@ -160,7 +160,7 @@ type
     srcData: TDoubleDynArray2;
     dstData: TDoubleDynArray2;
 
-    filter: array of TCompandingFilter;
+    filter: array of TEmphasisFilter;
 
     constructor Create(enc: TEncoder; idx, startSmp, endSmp: Integer);
     destructor Destroy; override;
@@ -219,6 +219,8 @@ type
     dstData: TSmallIntDynArray2;
 
     frames: array of TFrame;
+
+    function CreateEmphasisFilter: TEmphasisFilter;
 
     class function make16BitSample(smp: Double): SmallInt;
     class function makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean): TOutputSample;
@@ -281,7 +283,7 @@ begin
   Result := StrToFloatDef(copy(ParamStr(idx), Length(p) + 1), def);
 end;
 
-constructor TCompandingFilter.Create(ASampleRate: Integer);
+constructor TEmphasisFilter.Create(ASampleRate: Integer);
 begin
   sampleRate := ASampleRate;
 end;
@@ -627,6 +629,8 @@ begin
   prevCodingBlocks := -1;
   for iCode := 0 to High(codes) do
   begin
+    Result += codes[iCode].ExtraBitCount;
+
     coded := False;
     codeValue := codes[iCode].Code;
     iCodingBlocks := 0;
@@ -825,7 +829,7 @@ end;
 constructor TFrame.Create(enc: TEncoder; idx, startSmp, endSmp: Integer);
 var
   iChannel: Integer;
-  flt: TCompandingFilter;
+  flt: TEmphasisFilter;
 begin
   encoder := enc;
   index := idx;
@@ -838,16 +842,7 @@ begin
 
   SetLength(filter, encoder.ChannelCount);
   for iChannel := 0 to encoder.ChannelCount - 1 do
-  begin
-{$ifdef ATARI_STE}
-    flt := TLMC1992Filter.Create(encoder.SampleRate);
-    TLMC1992Filter(flt).Set_Tone_Level(TLMC1992Filter.TONE_STEPS - 1, 0);
-{$else}
-    flt := TDeltaFilter.Create(encoder.SampleRate);
-{$endif}
-
-    filter[iChannel] := flt;
-  end;
+    filter[iChannel] := encoder.CreateEmphasisFilter;
 
   if encoder.Verbose then
     WriteLn('Frame #', index, #9, ChunkCount);
@@ -1430,10 +1425,11 @@ const
   CAttenuationMilliseconds = 2.0;
   CVariableCodingRatio = 0.7;
 var
-  j, i, frmIdx, nextStart, psc, tentativeByteSize: Integer;
+  iChannel, iSample, frmIdx, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
   headerCost, chunksCost, indexingCost: Double;
-  avgPower, totalPower, perFramePower, curPower, smp: Double;
+  totalPower, perFramePower, curPower, smp: Double;
+  flt: array of TEmphasisFilter;
 begin
   WriteLn('[PrepareFrames]');
 
@@ -1449,9 +1445,9 @@ begin
   psc := SampleCount;
   SampleCount := ((SampleCount - 1) div BlockSampleCount + 1) * BlockSampleCount;
   SetLength(srcData, ChannelCount, SampleCount);
-  for j := 0 to ChannelCount - 1 do
-    for i := psc to SampleCount - 1 do
-      srcData[j, i] := 0;
+  for iChannel := 0 to ChannelCount - 1 do
+    for iSample := psc to SampleCount - 1 do
+      srcData[iChannel, iSample] := 0;
 
   if not IsInfinite(BitRate) then
     ProjectedByteSize := ceil((SampleCount / SampleRate) * (BitRate * 1024 / 8))
@@ -1512,67 +1508,72 @@ begin
 
   // pass 2
 
-  avgPower := 0;
-  for j := 0 to ChannelCount - 1 do
-    for i := 0 to SampleCount - 1 do
-      avgPower += Sqr(srcData[j, i]);
-  avgPower := Sqrt(avgPower / (SampleCount * ChannelCount));
-
-  totalPower := 0;
-  for i := 0 to SampleCount - 1 do
-  begin
-    smp := 0;
-    for j := 0 to ChannelCount - 1 do
-      smp += Sqr(Abs(srcData[j, i]) - avgPower);
-    smp := Round(Sqrt(smp / ChannelCount));
-
-    totalPower += Round(lerp(avgPower, smp, VariableFrameSizeRatio));
-  end;
-
-  perFramePower := totalPower / FrameCount;
-
-  if Verbose then
-  begin
-    writeln('TotalPower = ', Round(totalPower / High(SmallInt)));
-    writeln('PerFramePower = ', Round(perFramePower / High(SmallInt)));
-  end;
-
-  frmIdx := 0;
-  nextStart := 0;
-  curPower := 0;
-  SetLength(frames, FrameCount);
-  for i := 0 to SampleCount - 1 do
-  begin
-    smp := 0;
-    for j := 0 to ChannelCount - 1 do
-      smp += Sqr(Abs(srcData[j, i]) - avgPower);
-    smp := Round(Sqrt(smp / ChannelCount));
-
-    curPower += Round(lerp(avgPower, smp, VariableFrameSizeRatio));
-
-    if (i mod BlockSampleCount = 0) and (curPower >= perFramePower) then
+  SetLength(flt, ChannelCount);
+  for iChannel := 0 to ChannelCount - 1 do
+    flt[iChannel] := CreateEmphasisFilter;
+  try
+    totalPower := 0;
+    for iSample := 0 to SampleCount - 1 do
     begin
-      if frmIdx >= Length(frames) then
-        SetLength(frames, frmIdx + 1);
+      smp := 0;
+      for iChannel := 0 to ChannelCount - 1 do
+        smp += Sqr(flt[iChannel].PreFilter(srcData[iChannel, iSample]));
+      smp := Round(Sqrt(smp / ChannelCount));
 
-      frm := TFrame.Create(Self, frmIdx, nextStart, i - 1);
-      frames[frmIdx] := frm;
-      Inc(frmIdx);
-
-      curPower := 0;
-      nextStart := i;
+      totalPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
     end;
+
+    perFramePower := totalPower / FrameCount;
+
+    if Verbose then
+    begin
+      writeln('TotalPower = ', Round(totalPower / High(SmallInt)));
+      writeln('PerFramePower = ', Round(perFramePower / High(SmallInt)));
+    end;
+
+    for iChannel := 0 to ChannelCount - 1 do
+      flt[iChannel].Init;
+
+    frmIdx := 0;
+    nextStart := 0;
+    curPower := 0;
+    SetLength(frames, FrameCount);
+    for iSample := 0 to SampleCount - 1 do
+    begin
+      smp := 0;
+      for iChannel := 0 to ChannelCount - 1 do
+        smp += Sqr(flt[iChannel].PreFilter(srcData[iChannel, iSample]));
+      smp := Round(Sqrt(smp / ChannelCount));
+
+      curPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
+
+      if (iSample mod BlockSampleCount = 0) and (curPower >= perFramePower) then
+      begin
+        if frmIdx >= Length(frames) then
+          SetLength(frames, frmIdx + 1);
+
+        frm := TFrame.Create(Self, frmIdx, nextStart, iSample - 1);
+        frames[frmIdx] := frm;
+        Inc(frmIdx);
+
+        curPower := 0;
+        nextStart := iSample;
+      end;
+    end;
+
+    if frmIdx >= Length(frames) then
+      SetLength(frames, frmIdx + 1);
+
+    frm := TFrame.Create(Self, frmIdx, nextStart, SampleCount - 1);
+    frames[frmIdx] := frm;
+    Inc(frmIdx);
+
+    SetLength(frames, frmIdx);
+    FrameCount := frmIdx;
+  finally
+    for iChannel := 0 to ChannelCount - 1 do
+      flt[iChannel].Free;
   end;
-
-  if frmIdx >= Length(frames) then
-    SetLength(frames, frmIdx + 1);
-
-  frm := TFrame.Create(Self, frmIdx, nextStart, SampleCount - 1);
-  frames[frmIdx] := frm;
-  Inc(frmIdx);
-
-  SetLength(frames, frmIdx);
-  FrameCount := frmIdx;
 end;
 
 procedure TEncoder.MakeFrames;
@@ -1608,7 +1609,7 @@ begin
   ChunksPerFrame := 64;
   ChunksPerAttenuation := 25;
   FrameLength := 1000.0 / 3; // in ms
-  VariableFrameSizeRatio := 0.0;
+  VariableFrameSizeRatio := 1.0;
   PiggyCodingBlocksBits := 1;
   PiggyCodingSolveByValue := True;
   NoSolveFilterSettings := False;
@@ -1653,6 +1654,16 @@ end;
 function TEncoder.GetThreadsPerFrame: Cardinal;
 begin
   Result := Max(1, iDivDef(NumberOfProcessors, FramesLeft, NumberOfProcessors));
+end;
+
+function TEncoder.CreateEmphasisFilter: TEmphasisFilter;
+begin
+{$ifdef ATARI_STE}
+  Result := TLMC1992Filter.Create(SampleRate);
+  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.TONE_STEPS - 1, 0);
+{$else}
+  Result := TDeltaFilter.Create(SampleRate);
+{$endif}
 end;
 
 class function TEncoder.make16BitSample(smp: Double): SmallInt;
