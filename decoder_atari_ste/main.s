@@ -3,8 +3,10 @@
 lo_var_base	EQU	$800
 vbl_idx		EQU	lo_var_base-4
 vbl_done	EQU	vbl_idx-4
-io_ptr		EQU	vbl_done-4
-lo_var_main_end	EQU	io_ptr
+gsc_track_size	EQU	vbl_done-4
+gsc_track_ptr	EQU	gsc_track_size-4
+lo_var_main_end	EQU	gsc_track_ptr
+
 
 lo_buf_base	EQU	$7a00
 lo_buf_main_end	EQU	lo_buf_base
@@ -107,6 +109,11 @@ start:
 	move.w	#$26,-(sp)			; XBIOS call to Supexec.
 	trap	#14				; Software interript #14 -> XBIOS
 
+vbl:
+	bset.b	#0,vbl_done.w
+	addq.l	#1,vbl_idx.w
+	rte
+	
 dummy_vector:
 	rte
 
@@ -242,9 +249,9 @@ alloc_read_file:
 
 	move.l	a0,a6
 
-.go_str_end:
+.no_str_end:
 	tst.b	(a6)+
-	bne.s 	.go_str_end
+	bne.s 	.no_str_end
 	
 	move.b	#'.',-(a6)
 	addq.l	#1,a6
@@ -299,7 +306,7 @@ alloc_read_file:
 
 	move.l	d0,a6		; allocated mem ptr
 	
-	lea	(file_read),a0
+	lea	(file_read_message),a0
 	bsr.w	print_text
 
 	move.l	a6,a5
@@ -332,7 +339,7 @@ alloc_read_file:
 	rts
 	
 .error:
-	lea	(file_error),a0
+	lea	(file_error_message),a0
 	bsr.w	print_text
 	
 	moveq	#0,d0
@@ -364,29 +371,14 @@ gsc_load_track:
 	tst.l	d0
 	beq.s	gsc_load_track
 	
+	move.l	d0,gsc_track_size.l
+	move.l	a0,gsc_track_ptr.l
+
 	lea	(gsc_play_message),a0
 	bsr.w	print_text
 	
 	rts	
 
-	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; debugl
-debugl:
-	dbgl d0
-	rts
-	
-	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; debugw
-debugw:
-	dbgw d0
-	rts
-	
-	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; debugb
-debugb:
-	dbgb d0
-	rts
-	
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  MAIN  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 main:
@@ -414,7 +406,7 @@ main:
 	move.l	a0,$78.w
 	
 	; set Level 4 Int Autovector (VBL)
-	lea	(dummy_vector),a0
+	lea	(vbl),a0
 	move.l	a0,$70.w
 
 	; enable irqs
@@ -469,8 +461,8 @@ gsc_track_message:
 gsc_play_message:
 	dc.b	"Playing...",13,10,0
 
-file_read:
+file_read_message:
 	dc.b	13,10,"Reading file...",13,10,0	
 
-file_error:
+file_error_message:
 	dc.b	13,10,"Error reading file!",13,10,0	
