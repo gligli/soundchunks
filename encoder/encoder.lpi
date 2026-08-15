@@ -162,13 +162,13 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="..\fr025_st7.flac ..\st_fr025 -d -cpf12"/>
+        <CommandLineParams Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;toto&quot;"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="..\fr025_st7.flac ..\st_fr025 -d -cpf12"/>
+            <CommandLineParams Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;toto&quot;"/>
           </local>
         </Mode0>
       </Modes>

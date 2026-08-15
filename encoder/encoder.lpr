@@ -12,14 +12,16 @@ const
 {$ifdef ATARI_STE}
   CMaxAttenuationBits = 4;
   CAttenuationLawDecibels = 2.0;
+  CMinChunksPerFrame = 8;
+  CMaxChunksPerFrame = 256;
 {$else}
   CMaxAttenuationBits = 6;
   CAttenuationLawDecibels = 0.75;
+  CMinChunksPerFrame = 8;
+  CMaxChunksPerFrame = 65536;
 {$endif}
 
   CMaxAttenuation = (1 shl CMaxAttenuationBits) - 1;
-  CMinChunksPerFrame = 8;
-  CMaxChunksPerFrame = 65536;
 
 type
   TEncoder = class;
@@ -71,12 +73,14 @@ type
 
     function BiQuad(s: Double; ADefilter: Boolean): Double;
   public
+    bass_level, treb_level: Byte;
+
     constructor Create(ASampleRate: Integer); override;
     procedure Init; override;
     function PreFilter(s: Double): Double; override;
     function DeFilter(s: Double): Double; override;
 
-    procedure Set_Tone_Level(set_bass, set_treb: Integer);
+    procedure Set_Tone_Level(set_bass, set_treb: Byte);
   end;
 
   { TPiggyCoder }
@@ -186,8 +190,9 @@ type
   private
     function GetThreadsPerFrame: Cardinal;
   public
-    inputFN, outputFN: String;
+    InputFN, OutputFN: String;
 
+    ArtistTag, TitleTag: String;
     BitRate: Double;
     Precision: Integer;
     ChunkBitDepth: Integer; // 8 or 12 Bits
@@ -201,6 +206,7 @@ type
     PythonReduce: Boolean;
     NoSolveFilterSettings: Boolean;
     DebugMode: Boolean;
+    Verbose: Boolean;
 
     ChannelCount: Integer;
     SampleRate: Integer;
@@ -211,13 +217,12 @@ type
     FrameCount: Integer;
 
     FramesLeft: Integer;
-    Verbose: Boolean;
 
-    srcHeader: array[$00..$2b] of Byte;
-    srcData: TSmallIntDynArray2;
-    dstData: TSmallIntDynArray2;
+    SrcHeader: array[$00..$2b] of Byte;
+    SrcData: TSmallIntDynArray2;
+    DstData: TSmallIntDynArray2;
 
-    frames: array of TFrame;
+    Frames: array of TFrame;
 
     function CreateEmphasisFilter: TEmphasisFilter;
 
@@ -430,10 +435,13 @@ begin
   Result := BiQuad(s, True);
 end;
 
-procedure TLMC1992Filter.Set_Tone_Level(set_bass, set_treb: Integer);
+procedure TLMC1992Filter.Set_Tone_Level(set_bass, set_treb: Byte);
 var
   de: Boolean;
 begin
+  bass_level := set_bass;
+  treb_level := set_treb;
+
   for de := True downto False do
   begin
     // 13 levels; 0 through 12 correspond with -12dB to 12dB in 2dB steps
@@ -656,6 +664,16 @@ begin
 end;
 
 procedure TPiggyCoder.Render(AStream: TStream);
+
+  procedure DoWord(AWord: UInt64);
+  begin
+{$ifdef ATARI_STE}
+    AStream.WriteWord(NtoBE(Word(AWord and $ffff)));
+{$else}
+    AStream.WriteWord(AWord and $ffff);
+{$endif}
+  end;
+
 var
   iCode, iCodingBlocks, itemBitCnt, overallBitCnt, codeValue, codeBlockLimit, prevCodingBlocks: Integer;
   itemBits, overallBits: UInt64;
@@ -732,7 +750,7 @@ begin
     while overallBitCnt >= 16 do
     begin
       overallBitCnt -= 16;
-      AStream.WriteWord(overallBits and $ffff);
+      DoWord(overallBits);
       overallBits := overallBits shr 16;
     end;
   end;
@@ -740,7 +758,7 @@ begin
   if overallBitCnt > 0 then
   begin
     Assert(overallBitCnt <= 16);
-    AStream.WriteWord(overallBits and $ffff);
+    DoWord(overallBits);
   end;
 end;
 
@@ -862,12 +880,12 @@ begin
   begin
     srcFirstSample[iChannel] := 0.0;
     if StartSample > 0 then
-      srcFirstSample[iChannel] := TEncoder.makeFloatSample(encoder.srcData[iChannel, StartSample - 1]);
+      srcFirstSample[iChannel] := TEncoder.makeFloatSample(encoder.SrcData[iChannel, StartSample - 1]);
     filter[iChannel].Init;
     filter[iChannel].PreFilter(srcFirstSample[iChannel]);
     for iSample := 0 to SampleCount - 1 do
     begin
-      smp := TEncoder.makeFloatSample(encoder.srcData[iChannel, StartSample + iSample]);
+      smp := TEncoder.makeFloatSample(encoder.SrcData[iChannel, StartSample + iSample]);
       srcData[iChannel, iSample] := filter[iChannel].PreFilter(smp);
     end;
   end;
@@ -1114,7 +1132,11 @@ var
 begin
   Assert(reducedChunks.Count <= CMaxChunksPerFrame);
 
-{$ifndef ATARI_STE}
+{$ifdef ATARI_STE}
+  Assert(reducedChunks.Count - 1 <= High(Byte));
+  AStream.WriteByte(reducedChunks.Count - 1);
+  AStream.WriteByte((TLMC1992Filter(filter[0]).bass_level shl 4) or TLMC1992Filter(filter[0]).treb_level);
+{$else}
   w := (encoder.ChannelCount shl 8) or CStreamVersion;
   AStream.WriteWord(w and $ffff);
   w := reducedChunks.Count;
@@ -1125,9 +1147,6 @@ begin
   AStream.WriteDWord(w and $ffffffff);
   w := encoder.ChunksPerAttenuation;
   AStream.WriteWord(w and $ffff);
-{$else}
-  Assert(reducedChunks.Count - 1 <= High(Byte));
-  AStream.WriteByte(reducedChunks.Count - 1);
 {$endif}
 
   cl := reducedChunks;
@@ -1162,7 +1181,10 @@ begin
       Assert(False, 'ChunkBitDepth not supported');
   end;
 
-{$ifndef ATARI_STE}
+{$ifdef ATARI_STE}
+  Assert(plainChunks.Count div encoder.ChannelCount - 1 <= High(Word));
+  AStream.WriteWord(NtoBE(WORD(plainChunks.Count div encoder.ChannelCount - 1)));
+{$else}
   AStream.WriteDWord(plainChunks.Count div encoder.ChannelCount);
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
@@ -1170,9 +1192,6 @@ begin
     w := Word(TEncoder.make16BitSample(srcFirstSample[iChannel]));
     AStream.WriteWord(w and $ffff);
   end;
-{$else}
-  Assert(plainChunks.Count div encoder.ChannelCount - 1 <= High(Word));
-  AStream.WriteWord(NtoBE(WORD(plainChunks.Count div encoder.ChannelCount - 1)));
 {$endif}
 
   dstPiggyCoder.Render(AStream);
@@ -1206,7 +1225,7 @@ begin
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
     for iSample := 0 to SampleCount - 1 do
-      ref[iChannel, iSample] := TEncoder.makeFloatSample(encoder.srcData[iChannel, StartSample + iSample]);
+      ref[iChannel, iSample] := TEncoder.makeFloatSample(encoder.SrcData[iChannel, StartSample + iSample]);
 
   bestTreb := -1;
   best := Infinity;
@@ -1299,42 +1318,42 @@ var
   i, j: Integer;
   data: TSmallIntDynArray;
 begin
-  if LowerCase(ExtractFileExt(inputFN)) <> '.wav' then
+  if LowerCase(ExtractFileExt(InputFN)) <> '.wav' then
   begin
-    WriteLn('[Convert] ', inputFN);
+    WriteLn('[Convert] ', InputFN);
     wavFN := GetTempFileName + '.wav';
 {$ifdef ATARI_STE}
-    DoExternalSOX(inputFN, wavFN, 25033, True);
+    DoExternalSOX(InputFN, wavFN, 25033, True);
 {$else}
     DoExternalSOX(inputFN, wavFN);
 {$endif}
   end
   else
   begin
-    wavFN := inputFN;
+    wavFN := InputFN;
   end;
 
   WriteLn('[Load] ', wavFN);
 
   fs := TFileStream.Create(wavFN, fmOpenRead or fmShareDenyNone);
   try
-    fs.ReadBuffer(srcHeader[0], SizeOf(srcHeader));
-    SampleRate := PInteger(@srcHeader[$18])^;
-    ChannelCount := PWORD(@srcHeader[$16])^;
+    fs.ReadBuffer(SrcHeader[0], SizeOf(SrcHeader));
+    SampleRate := PInteger(@SrcHeader[$18])^;
+    ChannelCount := PWORD(@SrcHeader[$16])^;
 
     SampleCount := (fs.Size - fs.Position) div (SizeOf(SmallInt) * ChannelCount);
-    SetLength(srcData, ChannelCount, SampleCount);
+    SetLength(SrcData, ChannelCount, SampleCount);
 
     SetLength(data, SampleCount * ChannelCount);
     fs.ReadBuffer(data[0], SampleCount * ChannelCount * 2);
 
     for i := 0 to SampleCount - 1 do
       for j := 0 to ChannelCount - 1 do
-        srcData[j, i] := data[i * ChannelCount + j];
+        SrcData[j, i] := data[i * ChannelCount + j];
   finally
     fs.Free;
 
-    if wavFN <> inputFN then
+    if wavFN <> InputFN then
       DeleteFile(wavFN);
   end;
 end;
@@ -1346,19 +1365,19 @@ var
   wavFN: String;
   data: TSmallIntDynArray;
 begin
-  wavFN := ChangeFileExt(outputFN, '.wav');
+  wavFN := ChangeFileExt(OutputFN, '.wav');
 
   WriteLn('[SaveWAV] ', wavFN);
 
   fs := TFileStream.Create(wavFN, fmCreate or fmShareDenyWrite);
   try
-    fs.WriteBuffer(srcHeader[0], SizeOf(srcHeader));
+    fs.WriteBuffer(SrcHeader[0], SizeOf(SrcHeader));
 
     SetLength(data, SampleCount * ChannelCount);
 
     for i := 0 to SampleCount - 1 do
       for j := 0 to ChannelCount - 1 do
-        data[i * ChannelCount + j] := dstData[j, i];
+        data[i * ChannelCount + j] := DstData[j, i];
 
     fs.WriteBuffer(data[0], SampleCount * ChannelCount * 2);
   finally
@@ -1371,13 +1390,22 @@ var
   fs: TFileStream;
   cur: TMemoryStream;
   fn: String;
+  tag: array[0 .. 31] of AnsiChar;
 begin
   fs := nil;
-  fn := ChangeFileExt(outputFN, '.gsc');
+  fn := ChangeFileExt(OutputFN, '.gsc');
   cur := TMemoryStream.Create;
   fs := TFileStream.Create(fn, fmCreate or fmShareDenyWrite);
   try
     WriteLn('[SaveGSC] ', fn);
+
+{$ifdef ATARI_STE}
+    tag := ArtistTag;
+    cur.Write(tag, SizeOf(tag));
+
+    tag := TitleTag;
+    cur.Write(tag, SizeOf(tag));
+{$endif}
 
     SaveStream(cur);
     cur.Position := 0;
@@ -1399,7 +1427,7 @@ var
   i: Integer;
 begin
   for i := 0 to FrameCount - 1 do
-    frames[i].SaveStream(AStream);
+    Frames[i].SaveStream(AStream);
 end;
 
 procedure TEncoder.PrepareFrames;
@@ -1425,13 +1453,13 @@ begin
   ChunksPerAttenuation := Max(1, Round(SampleRate * CAttenuationMilliseconds / (1000.0 * ChunkSize * AttenuationChunkRatioMul)));
 {$endif}
 
-  // ensure srcData ends on a full block
+  // ensure SrcData ends on a full block
   psc := SampleCount;
   SampleCount := ((SampleCount - 1) div BlockSampleCount + 1) * BlockSampleCount;
-  SetLength(srcData, ChannelCount, SampleCount);
+  SetLength(SrcData, ChannelCount, SampleCount);
   for iChannel := 0 to ChannelCount - 1 do
     for iSample := psc to SampleCount - 1 do
-      srcData[iChannel, iSample] := 0;
+      SrcData[iChannel, iSample] := 0;
 
   if not IsInfinite(BitRate) then
     ProjectedByteSize := ceil((SampleCount / SampleRate) * (BitRate * 1024 / 8))
@@ -1446,9 +1474,16 @@ begin
 
   FrameCount := Max(1, ceil(SampleCount / (SampleRate * (FrameLength / 1000))));
 
+{$ifdef ATARI_STE}
+  ChunksPerFrame := ChunksPerFrame and (High(Word) - 1);
+  Inc(ChunksPerFrame, 2);
+  repeat
+    Dec(ChunksPerFrame, 2);
+{$else}
   Inc(ChunksPerFrame);
   repeat
     Dec(ChunksPerFrame);
+{$endif}
 
     indexingCost :=
       (SampleCount * ChannelCount * (
@@ -1501,7 +1536,7 @@ begin
     begin
       smp := 0;
       for iChannel := 0 to ChannelCount - 1 do
-        smp += Sqr(flt[iChannel].PreFilter(srcData[iChannel, iSample]));
+        smp += Sqr(flt[iChannel].PreFilter(SrcData[iChannel, iSample]));
       smp := Round(Sqrt(smp / ChannelCount));
 
       totalPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
@@ -1521,23 +1556,23 @@ begin
     frmIdx := 0;
     nextStart := 0;
     curPower := 0;
-    SetLength(frames, FrameCount);
+    SetLength(Frames, FrameCount);
     for iSample := 0 to SampleCount - 1 do
     begin
       smp := 0;
       for iChannel := 0 to ChannelCount - 1 do
-        smp += Sqr(flt[iChannel].PreFilter(srcData[iChannel, iSample]));
+        smp += Sqr(flt[iChannel].PreFilter(SrcData[iChannel, iSample]));
       smp := Round(Sqrt(smp / ChannelCount));
 
       curPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
 
       if (iSample mod BlockSampleCount = 0) and (curPower >= perFramePower) then
       begin
-        if frmIdx >= Length(frames) then
-          SetLength(frames, frmIdx + 1);
+        if frmIdx >= Length(Frames) then
+          SetLength(Frames, frmIdx + 1);
 
         frm := TFrame.Create(Self, frmIdx, nextStart, iSample - 1);
-        frames[frmIdx] := frm;
+        Frames[frmIdx] := frm;
         Inc(frmIdx);
 
         curPower := 0;
@@ -1545,14 +1580,14 @@ begin
       end;
     end;
 
-    if frmIdx >= Length(frames) then
-      SetLength(frames, frmIdx + 1);
+    if frmIdx >= Length(Frames) then
+      SetLength(Frames, frmIdx + 1);
 
     frm := TFrame.Create(Self, frmIdx, nextStart, SampleCount - 1);
-    frames[frmIdx] := frm;
+    Frames[frmIdx] := frm;
     Inc(frmIdx);
 
-    SetLength(frames, frmIdx);
+    SetLength(Frames, frmIdx);
     FrameCount := frmIdx;
   finally
     for iChannel := 0 to ChannelCount - 1 do
@@ -1565,9 +1600,9 @@ procedure TEncoder.MakeFrames;
   procedure DoFrame(Index: PtrInt; Data: Pointer);
   begin
     if NoSolveFilterSettings then
-      frames[Index].MakeFrame
+      Frames[Index].MakeFrame
     else
-      frames[Index].SolveCompandingFilterSettings;
+      Frames[Index].SolveCompandingFilterSettings;
   end;
 
 begin
@@ -1579,8 +1614,8 @@ end;
 
 constructor TEncoder.Create(InFN, OutFN: String);
 begin
-  inputFN := InFN;
-  outputFN := OutFN;
+  InputFN := InFN;
+  OutputFN := OutFN;
 
   BitRate := Infinity;
   ChunkBitDepth := 8;
@@ -1621,15 +1656,15 @@ var
 begin
   WriteLn('[MakeDstData]');
 
-  SetLength(dstData, ChannelCount, SampleCount);
+  SetLength(DstData, ChannelCount, SampleCount);
 
   for iChannel := 0 to ChannelCount - 1 do
   begin
     pos := 0;
     for iFrame := 0 to FrameCount - 1 do
-      for iSample := 0 to frames[iFrame].SampleCount - 1 do
+      for iSample := 0 to Frames[iFrame].SampleCount - 1 do
       begin
-        dstData[iChannel, pos] := make16BitSample(frames[iFrame].dstData[iChannel, iSample]);
+        DstData[iChannel, pos] := make16BitSample(Frames[iFrame].dstData[iChannel, iSample]);
         Inc(pos);
       end;
   end;
@@ -1867,9 +1902,9 @@ begin
 end;
 
 var
-  iChannel: Integer;
   enc: TEncoder;
   psyA: Complex;
+  s: String;
 begin
   try
     FormatSettings.DecimalSeparator := '.';
@@ -1889,17 +1924,22 @@ begin
       WriteLn(#9'-br'#9'encoder bit rate in kilobits/second; example: "-br250"');
       WriteLn(#9'-vfr'#9'RMS power based variable frame size ratio (0.0-1.0); default: "-vfr1.0"');
       WriteLn(#9'-fl'#9'(Average) frame length in milliseconds; default: "-fl10000"');
+{$ifdef ATARI_STE}
+      WriteLn(#9'-artist'#9'artist name tag (max. 32 chars); example: -artist"GliGli"');
+      WriteLn(#9'-title'#9'song title tag (max. 32 chars); example: -title"SoundChunks Demo"');
+{$endif}
       WriteLn(#9'-v'#9'verbose mode');
       Writeln('Development options:');
       WriteLn(#9'-d'#9'debug mode (outputs decoded WAVs)');
-      WriteLn(#9'-cs'#9'chunk size');
-      WriteLn(#9'-cpf'#9'max. chunks per frame (', CMinChunksPerFrame, '-', CMaxChunksPerFrame, ')');
-      WriteLn(#9'-cbd'#9'chunk bit depth (8,12)');
-      WriteLn(#9'-pr'#9'K-means precision; 0: "lossless" mode');
-      WriteLn(#9'-att'#9'attenuation to chunk ratio multiplier (0.1-10.0)');
 {$ifdef ATARI_STE}
       WriteLn(#9'-nsfs'#9'Don''t solve filter settings (faster!)');
+{$else}
+      WriteLn(#9'-cs'#9'chunk size');
+      WriteLn(#9'-cbd'#9'chunk bit depth (8,12)');
 {$endif}
+      WriteLn(#9'-cpf'#9'max. chunks per frame (', CMinChunksPerFrame, '-', CMaxChunksPerFrame, ')');
+      WriteLn(#9'-pr'#9'K-means precision; 0: "lossless" mode');
+      WriteLn(#9'-att'#9'attenuation to chunk ratio multiplier (0.1-10.0)');
       WriteLn(#9'-py'#9'python cluster.py reducer');
 
       WriteLn;
@@ -1915,15 +1955,29 @@ begin
       enc.VariableFrameSizeRatio := EnsureRange(ParamValue('-vfr', enc.VariableFrameSizeRatio), 0.0, 1.0);
       enc.AttenuationChunkRatioMul := EnsureRange(ParamValue('-att', enc.AttenuationChunkRatioMul), 0.1, 10.0);
       enc.FrameLength := Max(ParamValue('-fl', enc.FrameLength), 1.0);
-      enc.ChunkBitDepth := EnsureRange(round(ParamValue('-cbd', enc.ChunkBitDepth)), 1, 16);
-      enc.ChunkSize := round(ParamValue('-cs', enc.ChunkSize));
       enc.ChunksPerFrame := EnsureRange(round(ParamValue('-cpf', enc.ChunksPerFrame)), CMinChunksPerFrame, CMaxChunksPerFrame);
       enc.Verbose := HasParam('-v');
       enc.PythonReduce := HasParam('-py');
+      enc.DebugMode := HasParam('-d');
 {$ifdef ATARI_STE}
       enc.NoSolveFilterSettings := HasParam('-nsfs');
+      s := '-artist';
+      if ParamStart(s) >= 0 then
+      begin
+        s := ParamStr(ParamStart(s));
+        enc.ArtistTag := Copy(s, 8);
+      end;
+
+      s := '-title';
+      if ParamStart(s) >= 0 then
+      begin
+        s := ParamStr(ParamStart(s));
+        enc.TitleTag := Copy(s, 7);
+      end;
+{$else}
+      enc.ChunkSize := round(ParamValue('-cs', enc.ChunkSize));
+      enc.ChunkBitDepth := EnsureRange(round(ParamValue('-cbd', enc.ChunkBitDepth)), 1, 16);
 {$endif}
-      enc.DebugMode := HasParam('-d');
 
       WriteLn('BitRate = ', FloatToStr(enc.BitRate));
       WriteLn('VariableFrameSizeRatio = ', FloatToStr(enc.VariableFrameSizeRatio));
@@ -1950,7 +2004,7 @@ begin
       if enc.Precision > 0 then
         enc.SaveGSC;
 
-      psyA :=  enc.ComputePsyADelta(enc.srcData, enc.dstData);
+      psyA :=  enc.ComputePsyADelta(enc.SrcData, enc.DstData);
       WriteLn('[PsyADelta] Linear:', psyA.X:12:6, ', mu-Law:', psyA.Y:12:6);
 
     finally
