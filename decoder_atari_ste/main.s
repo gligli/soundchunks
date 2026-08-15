@@ -119,6 +119,7 @@ dummy_vector:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  INCLUDES  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+	include	"gsc.s"	
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  ROUTINES  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -411,13 +412,27 @@ main:
 
 	; enable irqs
 	move    #$2300,SR
-
+	
+	; init SoundChunks replayer
+	bsr.w	gsc_init
 
 	; main loop
 main_loop:
 
+	move.l	#$42381337,d0
+	moveq.l	#100,d3
+	.dummy_load_lp:
+		rept 	10
+			muls	d0,d0
+		endr
+		dbra.w	d3,.dummy_load_lp
+
+
 	; debug bar
-	; move.w  #$070,$ffff8240.w
+	move.w  #$0070,$ffff8240.w
+	
+	; restore bg
+	move.w  #$0812,$ffff8240.w
 	
 	; wait vsync
 	lea		vbl_done.w,a0
@@ -425,9 +440,6 @@ main_loop:
 .wait_sync:
 	btst.b	#0,(a0)
 	beq.s 	.wait_sync 
-	
-	; restore bg
-	; move.w  #$000,$ffff8240.w
 	
 	bra.w	main_loop	
 	
@@ -443,7 +455,7 @@ mpb:
 	ds.b	12
 
 system_stack:
-	ds.b	4096			; stack space (/!\ below z80_code_ptrs)
+	ds.b	4096			; stack space
 system_stack_end:
 
 print_data:
@@ -466,3 +478,5 @@ file_read_message:
 
 file_error_message:
 	dc.b	13,10,"Error reading file!",13,10,0	
+
+	even
