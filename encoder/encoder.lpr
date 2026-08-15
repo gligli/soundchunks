@@ -10,8 +10,8 @@ const
   CStreamVersion = 5;
 
 {$ifdef ATARI_STE}
-  CMaxAttenuationBits = 3;
-  CAttenuationLawDecibels = 1.5;
+  CMaxAttenuationBits = 4;
+  CAttenuationLawDecibels = 2.0;
 {$else}
   CMaxAttenuationBits = 6;
   CAttenuationLawDecibels = 0.75;
@@ -65,7 +65,6 @@ type
     treb_table: array[0 .. TONE_STEPS - 1] of TFirstOrder;
     coef: array[Boolean{DeFilter?}, 0 .. 4] of Double;
     data: array[Boolean{DeFilter?}, 0 .. 1] of Double;
-    gain: Double;
 
     function Bass_Shelf(g, fc, Fs: Double): TFirstOrder;
     function Treble_Shelf(g, fc, Fs: Double): TFirstOrder;
@@ -133,8 +132,8 @@ type
 
     constructor Create(frm: TFrame; idx: Integer; srcDta: PDouble);
 
-    function ComputeDCT: TDoubleDynArray;
-    procedure ComputeFromInvDCT(InvDCT: PDouble);
+    function ComputeFeatures: TDoubleDynArray;
+    procedure ComputeFromFeatures(AFeatures: PDouble);
     procedure ComputeDstAttributes;
     procedure MakeDstData;
   end;
@@ -340,7 +339,7 @@ var
 begin
 	(* Input coefficients *)
 	(* biquad1  Note: 'a' coefficients are subtracted *)
-	a := gain * s;		      (* a=g*xn;               *)
+	a := s;	                              	      (* a=g*xn;               *)
 	a -= coef[ADefilter, 0]*data[ADefilter, 0];		(* a1;  wn-1             *)
 	a -= coef[ADefilter, 1]*data[ADefilter, 1];		(* a2;  wn-2             *)
 						(* If coefficient scale  *)
@@ -408,8 +407,6 @@ begin
   end;
 
   Set_Tone_Level(NEUTRAL_TONE, NEUTRAL_TONE); // no bass / treble boost
-
-  gain := 1.0;
 end;
 
 procedure TLMC1992Filter.Init;
@@ -430,7 +427,6 @@ end;
 
 function TLMC1992Filter.DeFilter(s: Double): Double;
 begin
-  s := Round(s * High(ShortInt)) * (1.0 / High(ShortInt)); // simulate STe DMA bitness (8 bits)
   Result := BiQuad(s, True);
 end;
 
@@ -759,30 +755,22 @@ begin
   srcData := srcDta;
 end;
 
-function TChunk.ComputeDCT: TDoubleDynArray;
+function TChunk.ComputeFeatures: TDoubleDynArray;
 var
   iSample: Integer;
-  data: TDoubleDynArray;
 begin
-  SetLength(data, frame.encoder.ChunkSize);
-  for iSample := 0 to High(data) do
-    data[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, frame.encoder.ChunkSize - 1 - iSample, iSample)], 2, dstAttenuation, dstNegative).AsDouble;
-
   SetLength(Result, frame.encoder.ChunkSize);
-  TEncoder.ComputeDCT(Length(data), @data[0], @Result[0]);
+  for iSample := 0 to High(Result) do
+    Result[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, frame.encoder.ChunkSize - 1 - iSample, iSample)], 2, dstAttenuation, dstNegative).AsDouble;
 end;
 
-procedure TChunk.ComputeFromInvDCT(InvDCT: PDouble);
+procedure TChunk.ComputeFromFeatures(AFeatures: PDouble);
 var
   iSample: Integer;
-  data: TDoubleDynArray;
 begin
-  SetLength(data, frame.encoder.ChunkSize);
-  TEncoder.ComputeInvDCT(frame.encoder.ChunkSize, @InvDCT[0], @data[0]);
-
   SetLength(dstData, frame.encoder.ChunkSize);
-  for iSample := 0 to High(data) do
-    dstData[iSample] := TEncoder.makeOutputSample(data[iSample], frame.encoder.ChunkBitDepth, 0, False).AsInt;
+  for iSample := 0 to High(dstData) do
+    dstData[iSample] := TEncoder.makeOutputSample(AFeatures[iSample], frame.encoder.ChunkBitDepth, 0, False).AsInt;
 end;
 
 procedure TChunk.ComputeDstAttributes;
@@ -829,7 +817,6 @@ end;
 constructor TFrame.Create(enc: TEncoder; idx, startSmp, endSmp: Integer);
 var
   iChannel: Integer;
-  flt: TEmphasisFilter;
 begin
   encoder := enc;
   index := idx;
@@ -960,7 +947,7 @@ begin
   SetLength(Dataset, plainChunks.Count);
 
   for iChunk := 0 to plainChunks.Count - 1 do
-    Dataset[iChunk] := plainChunks[iChunk].ComputeDCT;
+    Dataset[iChunk] := plainChunks[iChunk].ComputeFeatures;
 
   if (prec > 0) and (plainChunks.Count > clusterCount) then
   begin
@@ -1004,9 +991,10 @@ begin
       reducedChunks.Add(chunk);
 
       for iSample := 0 to colCount - 1 do
-        Centroids[iChunk, iSample] := NanDef(Centroids[iChunk, iSample], 0.0);
+        if IsNan(Centroids[iChunk, iSample]) or IsInfinite(Centroids[iChunk, iSample]) then
+          Centroids[iChunk, iSample] := 0.0;
 
-      chunk.ComputeFromInvDCT(@Centroids[iChunk, 0]);
+      chunk.ComputeFromFeatures(@Centroids[iChunk, 0]);
   	end;
 
     for iChunk := 0 to plainChunks.Count - 1 do
@@ -1043,7 +1031,7 @@ end;
 
 procedure TFrame.Reconstruct;
 var
-  iDS, iChunk, iSample, iChannel, dsIdx, bestIdx: Integer;
+  iChunk, iSample, iChannel, dsIdx, bestIdx: Integer;
   bestErr, attCoeff, skew: Double;
   truthAcc, lossyAcc: TDoubleDynArray;
   Dataset: TANNFloatDynArray2;
@@ -1051,9 +1039,9 @@ var
   KDT: PANNkdtree;
   chunk: TChunk;
 begin
-  SetLength(Dataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, encoder.chunkSize * 2);
+  SetLength(Dataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, encoder.chunkSize);
 
-  SetLength(query, encoder.chunkSize * 2);
+  SetLength(query, encoder.chunkSize);
   SetLength(truthAcc, encoder.ChannelCount);
   SetLength(lossyAcc, encoder.ChannelCount);
   for iChannel := 0 to encoder.ChannelCount - 1 do
@@ -1069,17 +1057,13 @@ begin
 
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
-      Dataset[dsIdx + 0, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, False);
-      Dataset[dsIdx + 1, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, True);
-      Dataset[dsIdx + 2, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, False);
-      Dataset[dsIdx + 3, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, True);
+      Dataset[dsIdx + 0, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, False);
+      Dataset[dsIdx + 1, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, True);
+      Dataset[dsIdx + 2, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, False);
+      Dataset[dsIdx + 3, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, True);
     end;
 
-    for iDS := 0 to 3 do
-    begin
-      TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx, encoder.chunkSize], @Dataset[dsIdx, 0]);
-      Inc(dsIdx);
-    end;
+    Inc(dsIdx, 4);
   end;
 
   KDT := ann_kdtree_create(PPANNFloat(@Dataset[0]), Length(Dataset), encoder.ChunkSize, 1, ANN_KD_STD);
@@ -1092,9 +1076,7 @@ begin
 
       skew := (lossyAcc[chunk.channel] - truthAcc[chunk.channel]) / encoder.ChunkSize;
       for iSample := 0 to encoder.ChunkSize - 1 do
-        query[encoder.chunkSize + iSample] := (chunk.srcData[iSample] - skew) * attCoeff;
-
-      TEncoder.ComputeDCT(encoder.ChunkSize, @query[encoder.chunkSize], @query[0]);
+        query[iSample] := (chunk.srcData[iSample] - skew) * attCoeff;
 
       bestIdx := ann_kdtree_search(KDT, @query[0], 0.0, @bestErr);
 
@@ -1107,7 +1089,7 @@ begin
       for iSample := 0 to encoder.ChunkSize - 1 do
       begin
         truthAcc[chunk.channel] += chunk.srcData[iSample];
-        lossyAcc[chunk.channel] += Dataset[bestIdx, encoder.ChunkSize + iSample] / attCoeff;
+        lossyAcc[chunk.channel] += Dataset[bestIdx, iSample] / attCoeff;
       end;
     end;
   finally
@@ -1437,8 +1419,10 @@ begin
 
   BlockSampleCount := ChunkSize;
 
-{$ifndef ATARI_STE}
-  ChunksPerAttenuation := Round(SampleRate * CAttenuationMilliseconds / (1000.0 * ChunkSize * AttenuationChunkRatioMul));
+{$ifdef ATARI_STE}
+  ChunksPerAttenuation := Max(1, Round(ChunksPerAttenuation / AttenuationChunkRatioMul));
+{$else}
+  ChunksPerAttenuation := Max(1, Round(SampleRate * CAttenuationMilliseconds / (1000.0 * ChunkSize * AttenuationChunkRatioMul)));
 {$endif}
 
   // ensure srcData ends on a full block
@@ -1607,7 +1591,7 @@ begin
 {$ifdef ATARI_STE}
   ChunkSize := 5;
   ChunksPerFrame := 64;
-  ChunksPerAttenuation := 25;
+  ChunksPerAttenuation := 50;
   FrameLength := 1000.0 / 3; // in ms
   VariableFrameSizeRatio := 1.0;
   PiggyCodingBlocksBits := 1;
