@@ -410,12 +410,12 @@ main:
 	lea	(vbl),a0
 	move.l	a0,$70.w
 
-	; enable irqs
-	move    #$2300,SR
-	
 	; init SoundChunks replayer
 	bsr.w	gsc_init
 
+	; enable irqs
+	move    #$2300,SR
+	
 	; main loop
 main_loop:
 
