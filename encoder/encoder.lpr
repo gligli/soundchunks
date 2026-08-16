@@ -1624,9 +1624,9 @@ begin
   Precision := 3;
 
 {$ifdef ATARI_STE}
-  ChunkSize := 5;
-  ChunksPerFrame := 64;
-  ChunksPerAttenuation := 50;
+  ChunkSize := 6;
+  ChunksPerFrame := 256;
+  ChunksPerAttenuation := 73;
   FrameLength := 1000.0 / 3; // in ms
   VariableFrameSizeRatio := 1.0;
   PiggyCodingBlocksBits := 1;
@@ -1936,10 +1936,10 @@ begin
 {$else}
       WriteLn(#9'-cs'#9'chunk size');
       WriteLn(#9'-cbd'#9'chunk bit depth (8,12)');
+      WriteLn(#9'-att'#9'attenuation to chunk ratio multiplier (0.1-10.0)');
 {$endif}
       WriteLn(#9'-cpf'#9'max. chunks per frame (', CMinChunksPerFrame, '-', CMaxChunksPerFrame, ')');
       WriteLn(#9'-pr'#9'K-means precision; 0: "lossless" mode');
-      WriteLn(#9'-att'#9'attenuation to chunk ratio multiplier (0.1-10.0)');
       WriteLn(#9'-py'#9'python cluster.py reducer');
 
       WriteLn;
@@ -1953,7 +1953,6 @@ begin
       enc.BitRate := ParamValue('-br', enc.BitRate);
       enc.Precision := round(ParamValue('-pr', enc.Precision));
       enc.VariableFrameSizeRatio := EnsureRange(ParamValue('-vfr', enc.VariableFrameSizeRatio), 0.0, 1.0);
-      enc.AttenuationChunkRatioMul := EnsureRange(ParamValue('-att', enc.AttenuationChunkRatioMul), 0.1, 10.0);
       enc.FrameLength := Max(ParamValue('-fl', enc.FrameLength), 1.0);
       enc.ChunksPerFrame := EnsureRange(round(ParamValue('-cpf', enc.ChunksPerFrame)), CMinChunksPerFrame, CMaxChunksPerFrame);
       enc.Verbose := HasParam('-v');
@@ -1977,6 +1976,7 @@ begin
 {$else}
       enc.ChunkSize := round(ParamValue('-cs', enc.ChunkSize));
       enc.ChunkBitDepth := EnsureRange(round(ParamValue('-cbd', enc.ChunkBitDepth)), 1, 16);
+      enc.AttenuationChunkRatioMul := EnsureRange(ParamValue('-att', enc.AttenuationChunkRatioMul), 0.1, 10.0);
 {$endif}
 
       WriteLn('BitRate = ', FloatToStr(enc.BitRate));

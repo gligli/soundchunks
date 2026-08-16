@@ -80,7 +80,7 @@ screen_size_b	EQU	screen_width_b*screen_height
 		swap.w	\1
 		dbgw	\1
 	endm
-
+	
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  STARTUP  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 	SECTION TEXT
@@ -372,8 +372,18 @@ gsc_load_track:
 	tst.l	d0
 	beq.s	gsc_load_track
 	
+	move.l	a0,a1
+
+	bsr.w	print_text
+	lea 	(artist_title_delim_message),a0
+	bsr.w	print_text
+	lea.l	32(a1),a0
+	bsr.w	print_text
+
+	lea.l	32(a1),a1
+	move.l	a1,gsc_track_ptr.l
+	subi.l	#64,d0
 	move.l	d0,gsc_track_size.l
-	move.l	a0,gsc_track_ptr.l
 
 	lea	(gsc_play_message),a0
 	bsr.w	print_text
@@ -410,17 +420,17 @@ main:
 	lea	(vbl),a0
 	move.l	a0,$70.w
 
-	; init SoundChunks replayer
-	bsr.w	gsc_init
-
 	; enable irqs
 	move    #$2300,SR
 	
+	; init SoundChunks replayer
+	bsr.w	gsc_init
+
 	; main loop
 main_loop:
 
 	move.l	#$42381337,d0
-	moveq.l	#100,d3
+	moveq.l	#50,d3
 	.dummy_load_lp:
 		rept 	10
 			muls	d0,d0
@@ -428,9 +438,6 @@ main_loop:
 		dbra.w	d3,.dummy_load_lp
 
 
-	; debug bar
-	move.w  #$0070,$ffff8240.w
-	
 	; restore bg
 	move.w  #$0812,$ffff8240.w
 	
@@ -440,6 +447,9 @@ main_loop:
 .wait_sync:
 	btst.b	#0,(a0)
 	beq.s 	.wait_sync 
+	
+	; debug bar
+	move.w  #$0070,$ffff8240.w
 	
 	bra.w	main_loop	
 	
@@ -471,12 +481,15 @@ gsc_track_message:
 	dc.b	"Please input GSC name:",13,10,0
 
 gsc_play_message:
-	dc.b	"Playing...",13,10,0
+	dc.b	13,10,"Playing...",13,10,0
 
 file_read_message:
 	dc.b	13,10,"Reading file...",13,10,0	
 
 file_error_message:
 	dc.b	13,10,"Error reading file!",13,10,0	
+
+artist_title_delim_message:
+	dc.b	" / ",0	
 
 	even
