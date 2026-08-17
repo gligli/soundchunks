@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Active="Release"/>
+    <BuildModes Active="Release_Atari_STe"/>
     <Units Count="21">
       <Unit0>
         <Filename Value="encoder.lpr"/>
@@ -11,7 +11,7 @@
         <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
         <TopLine Value="1615"/>
-        <CursorPos X="27" Y="1630"/>
+        <CursorPos X="29" Y="1629"/>
         <UsageCount Value="200"/>
         <Bookmarks Count="3">
           <Item0 Y="1881" ID="3"/>

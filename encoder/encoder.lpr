@@ -1626,7 +1626,7 @@ begin
 {$ifdef ATARI_STE}
   ChunkSize := 6;
   ChunksPerFrame := 256;
-  ChunksPerAttenuation := 73;
+  ChunksPerAttenuation := 40;
   FrameLength := 1000.0 / 3; // in ms
   VariableFrameSizeRatio := 1.0;
   PiggyCodingBlocksBits := 1;

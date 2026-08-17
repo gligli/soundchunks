@@ -374,9 +374,15 @@ gsc_load_track:
 	
 	move.l	a0,a1
 
+	lea	(gsc_artist_message),a0
 	bsr.w	print_text
-	lea 	(artist_title_delim_message),a0
+
+	move.l	a1,a0
 	bsr.w	print_text
+
+	lea 	(gsc_title_message),a0
+	bsr.w	print_text
+	
 	lea.l	32(a1),a0
 	bsr.w	print_text
 
@@ -478,7 +484,7 @@ gsc_welcome_message:
 	dc.b	13,10,"STeGSC, Atari STe SoundChunks replayer",13,10,"By GliGli, version 0.00a",13,10,13,10,0
 
 gsc_track_message:
-	dc.b	"Please input GSC name:",13,10,0
+	dc.b	"Please input GSC file name:",13,10,0
 
 gsc_play_message:
 	dc.b	13,10,"Playing...",13,10,0
@@ -489,7 +495,9 @@ file_read_message:
 file_error_message:
 	dc.b	13,10,"Error reading file!",13,10,0	
 
-artist_title_delim_message:
-	dc.b	" / ",0	
+gsc_artist_message:
+	dc.b	"Artist: ",0	
+gsc_title_message:
+	dc.b	13,10,"Title:  ",0	
 
 	even
