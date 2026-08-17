@@ -1400,6 +1400,21 @@ begin
     WriteLn('[SaveGSC] ', fn);
 
 {$ifdef ATARI_STE}
+    tag := 'GSCa';
+    cur.Write(tag, 4);
+    cur.WriteByte(CStreamVersion);
+    cur.WriteByte(ChannelCount);
+    cur.WriteByte(ChunkSize);
+    cur.WriteByte(ChunksPerAttenuation);
+    cur.WriteWord(NtoBE(Word(SampleRate)));
+
+    // dummy stuff to fill 16 bytes :o)
+    cur.WriteWord(NtoBE(Word($c0de)));
+    cur.WriteWord(NtoBE(Word($611)));
+    cur.WriteWord(NtoBE(Word($611)));
+
+    Assert(cur.Position = 16);
+
     tag := ArtistTag;
     cur.Write(tag, SizeOf(tag));
 

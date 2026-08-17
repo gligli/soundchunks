@@ -377,13 +377,13 @@ gsc_load_track:
 	lea	(gsc_artist_message),a0
 	bsr.w	print_text
 
-	move.l	a1,a0
+	lea.l	16(a1),a0
 	bsr.w	print_text
 
 	lea 	(gsc_title_message),a0
 	bsr.w	print_text
 	
-	lea.l	32(a1),a0
+	lea.l	48(a1),a0
 	bsr.w	print_text
 
 	lea.l	32(a1),a1
