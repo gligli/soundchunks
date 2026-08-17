@@ -1,3 +1,7 @@
+; GliGli's SoundChunks decoder
+;
+; Author: GliGli
+; License: GNU GPL3
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  CONSTANTS  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -39,7 +43,7 @@ lo_buf_gsc_end		EQU	lo_buf_main_end
 	SECTION TEXT
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; gsc_timer_a_init_int
+	; gsc_timer_a_init_int: bokeh isr to cleanly start the DMA Sound System
 gsc_timer_a_init_int:
 	move.l	a0,-(sp)
 
@@ -47,43 +51,50 @@ gsc_timer_a_init_int:
 	lea	(gsc_timer_a_update_int),a0
 	move.l	a0,$134.w
 
-	; interrupt not "in service" anymore
-	bclr.b	#5,$fffffa0f.w  
-
 	; start DMA Sound System
 	move.b	#$3,$ffff8901.w
 	
+	; interrupt not "in service" anymore
+	bclr.b	#5,$fffffa0f.w  
+
 	move.l	(sp)+,a0
 	rte
 	
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; gsc_timer_a_update_int
+	; gsc_timer_a_update_int: everything happens here (decoding SoundChunks)
 gsc_timer_a_update_int:
 	movem.l	a0-a2/d0-d1,-(sp)
 
+	; sync only on second buffer (ie. half the time, good enough)
 	tst.w	gsc_dmasnd_phase.w
 	beq.s	.skew_end
 	.second_buffer_playing:
 
 		moveq.l	#0,d0
 		move.l	d0,a2
+		
 		lea	(gsc_audio_buf+gsc_audio_buf_size+gsc_lmc_sample_skew),a1
 
+		; already synced?
 		movep.w	$ffff890b(a2),d1
 		cmp.w	a1,d1
 		bhs.s	.skew_end
 		
+		; stop Timer A
 		move.b	d0,$fffffa19.w
 
-		.skew_fix_lp1:
+		; loop until we are synced on the sample we want
+		.skew_fix_lp:
 			movep.w	$ffff890b(a2),d1
 			cmp.w	a1,d1
-			bne.s	.skew_fix_lp1
+			bne.s	.skew_fix_lp
 
+		; continue Timer A
 		move.b	#gsc_mfp_prescaler_code,$fffffa19.w
 		
 	.skew_end:
 
+	; send attenuation to LMC1992 thru Microwire (when this command takes effect in the LMC, we are synced with the buffer start)
 	move.w	gsc_lmc_next_att.w,$ffff8922.w
 
 	lea	(gsc_audio_buf),a1
@@ -117,11 +128,11 @@ gsc_timer_a_update_int:
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_init
 gsc_init:
+	; initial state
 	move.w	#gsc_audio_buf_size,gsc_dmasnd_phase.w
 
 	; set Microwire mask register
 	move.w	#$7ff,$ffff8924.w
-
 
 	; 25033Hz Mono Looping DMA Sound System
 	clr.b	$ffff8901.w
@@ -143,7 +154,7 @@ gsc_init:
 	rol.l	#8,d0
 	move.b	d0,$ffff8913.w
 
-	; 200Hz MFP Timer A
+	; setup MFP Timer A (slightly faster than buffer length)
 	bset.b	#5,$fffffa07.w
 	bclr.b	#5,$fffffa0b.w
 	bclr.b	#5,$fffffa0f.w
