@@ -19,6 +19,8 @@ gsc_mfp_prescaler_code	EQU	7
 mfp_clock_rate		EQU	2457600
 gsc_sample_rate		EQU	25033
 
+gsc_header_size		EQU	48
+
 gsc_audio_buf_size	EQU	gsc_chunks_per_att*gsc_chunk_size
 gsc_audio_dblbuf_size	EQU	gsc_audio_buf_size*2
 
@@ -27,7 +29,13 @@ gsc_timer_data		EQU	gsc_timer_data_num/gsc_mfp_prescaler_value-1
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  VARIABLES  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-gsc_dmasnd_phase	EQU	lo_var_main_end-2
+gsc_start_ptr		EQU	lo_var_main_end-4
+gsc_end_ptr		EQU	gsc_start_ptr-4
+gsc_cur_chunks_ptr	EQU	gsc_end_ptr-4
+gsc_cur_indexes_ptr	EQU	gsc_cur_chunks_ptr-4
+gsc_cur_indexes_left	EQU	gsc_cur_indexes_ptr-2
+gsc_timer_a_int_save	EQU	gsc_cur_indexes_left-4
+gsc_dmasnd_phase	EQU	gsc_timer_a_int_save-2
 gsc_lmc_next_att	EQU	gsc_dmasnd_phase-2
 lo_var_gsc_end		EQU	gsc_lmc_next_att
 			
@@ -35,13 +43,10 @@ lo_buf_gsc_end		EQU	lo_buf_main_end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  MACROS  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-	macro	mac				;
-	endm
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  ROUTINES  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 	SECTION TEXT
-
+	
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_timer_a_init_int: bokeh isr to cleanly start the DMA Sound System
 gsc_timer_a_init_int:
@@ -63,7 +68,7 @@ gsc_timer_a_init_int:
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_timer_a_update_int: everything happens here (decoding SoundChunks)
 gsc_timer_a_update_int:
-	movem.l	a0-a2/d0-d1,-(sp)
+	movem.l	a0/a1/d0/d1,-(sp)
 
 	; sync only on second buffer (ie. half the time, good enough)
 	tst.w	gsc_dmasnd_phase.w
@@ -71,12 +76,12 @@ gsc_timer_a_update_int:
 	.second_buffer_playing:
 
 		moveq.l	#0,d0
-		move.l	d0,a2
+		move.l	d0,a0
 		
 		lea	(gsc_audio_buf+gsc_audio_buf_size+gsc_lmc_sample_skew),a1
 
 		; already synced?
-		movep.w	$ffff890b(a2),d1
+		movep.w	$ffff890b(a0),d1
 		cmp.w	a1,d1
 		bhs.s	.skew_end
 		
@@ -85,7 +90,7 @@ gsc_timer_a_update_int:
 
 		; loop until we are synced on the sample we want
 		.skew_fix_lp:
-			movep.w	$ffff890b(a2),d1
+			movep.w	$ffff890b(a0),d1
 			cmp.w	a1,d1
 			bne.s	.skew_fix_lp
 
@@ -100,7 +105,7 @@ gsc_timer_a_update_int:
 	lea	(gsc_audio_buf),a1
 	lea	(sintmp),a0
 	
-	move.w	#$4c0+40,d1
+	move.w	#%10011000000+40,d1
 	move.w	#gsc_audio_buf_size,d0
 	sub.w	gsc_dmasnd_phase.w,d0
 	adda.w	d0,a1
@@ -121,13 +126,77 @@ gsc_timer_a_update_int:
 	; interrupt not "in service" anymore
 	bclr.b	#5,$fffffa0f.w  		
 
-	movem.l	(sp)+,a0-a2/d0-d1
+	movem.l	(sp)+,a0/a1/d0/d1
 	rte
 
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; microwire_write_wait: (d0: command)
+gsc_microwire_write_wait:
+	movem.l	d0/d1,-(sp)
+
+	move.w	$ffff8922.w,d1
+	move.w	d0,$ffff8922.w
+	.wait:
+		cmp.w	$ffff8922.w,d1
+		bne.s	.wait
+
+	movem.l	(sp)+,d0/d1
+	rts
+	
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; gsc_next_frame: handle changing frame (a0: pointer on frame start)
+gsc_next_frame:
+	movem.l	a0/d0/d1/d2,-(sp)
+	
+	; read chunk count
+	moveq	#0,d2
+	move.b	(a0)+,d2
+	addq.w	#1,d2
+	mulu.w	#gsc_chunk_size,d2
+		
+	; read bass/treble
+	moveq	#0,d1
+	move.b	(a0)+,d1
+	
+	; apply treble
+	move.w	d1,d0
+	andi.w	#$000f,d0
+	ori.w	#%10010000000,d0		; treble
+	bsr.w	gsc_microwire_write_wait
+	
+	; apply bass
+	move.w	d1,d0
+	lsr.w	#4,d0
+	ori.w	#%10001000000,d0		; bass
+	bsr.w	gsc_microwire_write_wait
+	
+	move.l	a0,gsc_cur_chunks_ptr.w
+	
+	; skip chunks
+	adda.l	d2,a0
+
+	; read indexes count
+	move.w	(a0)+,gsc_cur_indexes_left.w
+	
+	move.l	a0,gsc_cur_indexes_ptr.w
+
+	movem.l	(sp)+,a0/d0/d1/d2
+	rts
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; gsc_init
+	; gsc_init (a0: pointer on GSC data, d0: GSC data size)
 gsc_init:
+	movem.l	a0/a1/d0,-(sp)
+
+	; prepare decoding
+	lea	gsc_header_size(a0),a1
+	move.l	a1,gsc_start_ptr.w
+	adda.l	d0,a1
+	move.l	a1,gsc_end_ptr.w
+	
+	move.l	gsc_start_ptr.w,a0
+	bsr.w	gsc_next_frame
+
 	; initial state
 	move.w	#gsc_audio_buf_size,gsc_dmasnd_phase.w
 
@@ -163,17 +232,37 @@ gsc_init:
 	move.b	#gsc_timer_data,$fffffa1f.w
 
 	; set ST-MFP-13 Vector (Timer A)
+	move.l	$134.w,gsc_timer_a_int_save.w
 	lea	(gsc_timer_a_init_int),a0
 	move.l	a0,$134.w
 
 	; start Timer A
 	bclr.b	#4,$fffffa19.w
 
+	movem.l	(sp)+,a0/a1/d0
 	rts
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_finish
 gsc_finish:
+	; stop Timer A
+	bset.b	#4,$fffffa19.w
+	bclr.b	#5,$fffffa07.w
+	
+	; stop DMA Sound System
+	clr.b	$ffff8901.w
+	
+	; reset LMC1992 thru Microwire
+	move.w	#%10011000000+40,d0		; master volume
+	bsr.w	gsc_microwire_write_wait
+	move.w	#%10010000000+6,d0		; treble
+	bsr.w	gsc_microwire_write_wait
+	move.w	#%10001000000+6,d0		; bass
+	bsr.w	gsc_microwire_write_wait
+
+	; restore ST-MFP-13 Vector (Timer A)
+	move.l	gsc_timer_a_int_save.w,$134.w
+	
 	rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  BSS  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

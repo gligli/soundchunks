@@ -3,9 +3,9 @@
 lo_var_base	EQU	$800
 vbl_idx		EQU	lo_var_base-4
 vbl_done	EQU	vbl_idx-4
-gsc_track_size	EQU	vbl_done-4
-gsc_track_ptr	EQU	gsc_track_size-4
-lo_var_main_end	EQU	gsc_track_ptr
+gsc_file_size	EQU	vbl_done-4
+gsc_file_ptr	EQU	gsc_file_size-4
+lo_var_main_end	EQU	gsc_file_ptr
 
 
 lo_buf_base	EQU	$7a00
@@ -386,14 +386,12 @@ gsc_load_track:
 	lea.l	48(a1),a0
 	bsr.w	print_text
 
-	lea.l	32(a1),a1
-	move.l	a1,gsc_track_ptr.l
-	subi.l	#64,d0
-	move.l	d0,gsc_track_size.l
-
 	lea	(gsc_play_message),a0
 	bsr.w	print_text
 	
+	move.l	a1,gsc_file_ptr.l
+	move.l	d0,gsc_file_size.l
+
 	rts	
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  MAIN  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -405,7 +403,7 @@ main:
 	; welcome message
 	jsr	gsc_show_welcome_message
 
-	; load ROM
+	; load GSC
 	jsr	gsc_load_track	
 
 	; disable irqs
@@ -430,6 +428,8 @@ main:
 	move    #$2300,SR
 	
 	; init SoundChunks replayer
+	move.l	gsc_file_ptr.l,a1
+	move.l	gsc_file_size.l,d0
 	bsr.w	gsc_init
 
 	; main loop
