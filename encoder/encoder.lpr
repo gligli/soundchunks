@@ -4,7 +4,7 @@ program encoder;
 
 uses
   windows, Classes, sysutils, strutils, Types, fgl, math,
-  extern, ap, conv, correlation, mtpool;
+  extern, mtpool;
 
 const
   CStreamVersion = 5;
@@ -187,6 +187,9 @@ type
       AsInt: SmallInt;
       AsDouble: Double;
     end;
+    TPsyADelta = record
+      Linear, MuLaw: Double;
+    end;
   private
     function GetThreadsPerFrame: Cardinal;
   public
@@ -235,8 +238,8 @@ type
     class procedure ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
     class procedure ComputeInvDCT(chunkSz: Integer; dct, samples: PDouble);
     class function CompareEuclidean(const dctA, dctB: TDoubleDynArray): Double; overload;
-    class function CompareMuLawManhattan(const dctA, dctB: TDoubleDynArray): Complex;
-    class function ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): Complex;
+    class function CompareMuLawManhattan(const dctA, dctB: TDoubleDynArray): TPsyADelta;
+    class function ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): TPsyADelta;
     class procedure createWAV(channels: word; resolution: word; rate: longint; fn: string; const data: TSmallIntDynArray);
 
     constructor Create(InFN, OutFN: String);
@@ -661,6 +664,9 @@ begin
 
     prevCodingBlocks := iCodingBlocks;
   end;
+
+  if Result and 15 <> 0 then
+    Result += 16 - (Result and 15);
 end;
 
 procedure TPiggyCoder.Render(AStream: TStream);
@@ -1804,22 +1810,22 @@ begin
   Result := sqrt(Result / Length(dctA));
 end;
 
-class function TEncoder.CompareMuLawManhattan(const dctA, dctB: TDoubleDynArray): Complex;
+class function TEncoder.CompareMuLawManhattan(const dctA, dctB: TDoubleDynArray): TPsyADelta;
 var
   i: Integer;
 begin
   Assert(Length(dctA) = Length(dctB));
 
-  Result.X := 0.0;
-  Result.Y := 0.0;
+  Result.Linear := 0.0;
+  Result.MuLaw := 0.0;
   for i := 0 to High(dctA) do
   begin
-    Result.X += Abs(dctA[i] - dctB[i]);
-    Result.Y += Abs(muLaw(dctA[i]) - muLaw(dctB[i]));
+    Result.Linear += Abs(dctA[i] - dctB[i]);
+    Result.MuLaw += Abs(muLaw(dctA[i]) - muLaw(dctB[i]));
   end;
 
-  Result.X := Result.X / Length(dctA);
-  Result.Y := Result.Y / Length(dctA);
+  Result.Linear := Result.Linear / Length(dctA);
+  Result.MuLaw := Result.MuLaw / Length(dctA);
 end;
 
 function TEncoder.ComputeEAQUAL(UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
@@ -1843,7 +1849,7 @@ begin
   DeleteFile(FNTst);
 end;
 
-class function TEncoder.ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): Complex;
+class function TEncoder.ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): TPsyADelta;
 var
   i, j, len: Integer;
   rr, rt: TDoubleDynArray;
@@ -1862,8 +1868,8 @@ begin
 
   Result := CompareMuLawManhattan(rr, rt);
 
-  Result.X *= High(SmallInt);
-  Result.Y *= High(SmallInt);
+  Result.Linear *= High(SmallInt);
+  Result.MuLaw *= High(SmallInt);
 end;
 
 class procedure TEncoder.createWAV(channels: word; resolution: word; rate: longint; fn: string; const data: TSmallIntDynArray);
@@ -1918,7 +1924,7 @@ end;
 
 var
   enc: TEncoder;
-  psyA: Complex;
+  psyA: TEncoder.TPsyADelta;
   s: String;
 begin
   try
@@ -1940,8 +1946,8 @@ begin
       WriteLn(#9'-vfr'#9'RMS power based variable frame size ratio (0.0-1.0); default: "-vfr1.0"');
       WriteLn(#9'-fl'#9'(Average) frame length in milliseconds; default: "-fl10000"');
 {$ifdef ATARI_STE}
-      WriteLn(#9'-artist'#9'artist name tag (max. 32 chars); example: -artist"GliGli"');
-      WriteLn(#9'-title'#9'song title tag (max. 32 chars); example: -title"SoundChunks Demo"');
+      WriteLn(#9'-artist'#9'artist name tag (max. 31 chars); example: -artist"GliGli"');
+      WriteLn(#9'-title'#9'song title tag (max. 31 chars); example: -title"SoundChunks Demo"');
 {$endif}
       WriteLn(#9'-v'#9'verbose mode');
       Writeln('Development options:');
@@ -1979,14 +1985,14 @@ begin
       if ParamStart(s) >= 0 then
       begin
         s := ParamStr(ParamStart(s));
-        enc.ArtistTag := Copy(s, 8);
+        enc.ArtistTag := Copy(s, 8, 31);
       end;
 
       s := '-title';
       if ParamStart(s) >= 0 then
       begin
         s := ParamStr(ParamStart(s));
-        enc.TitleTag := Copy(s, 7);
+        enc.TitleTag := Copy(s, 7, 31);
       end;
 {$else}
       enc.ChunkSize := round(ParamValue('-cs', enc.ChunkSize));
@@ -2020,7 +2026,7 @@ begin
         enc.SaveGSC;
 
       psyA :=  enc.ComputePsyADelta(enc.SrcData, enc.DstData);
-      WriteLn('[PsyADelta] Linear:', psyA.X:12:6, ', mu-Law:', psyA.Y:12:6);
+      WriteLn('[PsyADelta] Linear:', psyA.Linear:12:6, ', mu-Law:', psyA.MuLaw:12:6);
 
     finally
       enc.Free;
