@@ -30,7 +30,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="multithreadprocs;alglib;ffmpeg"/>
+            <OtherUnitFiles Value="multithreadprocs;ffmpeg"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -73,7 +73,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="multithreadprocs;alglib;ffmpeg"/>
+            <OtherUnitFiles Value="multithreadprocs;ffmpeg"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -121,7 +121,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="multithreadprocs;alglib;ffmpeg"/>
+            <OtherUnitFiles Value="multithreadprocs;ffmpeg"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -173,27 +173,23 @@
         </Mode0>
       </Modes>
     </RunParams>
-    <Units Count="5">
+    <Units Count="4">
       <Unit0>
         <Filename Value="encoder.lpr"/>
         <IsPartOfProject Value="True"/>
       </Unit0>
       <Unit1>
-        <Filename Value="alglib\conv.pas"/>
+        <Filename Value="extern.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit1>
       <Unit2>
-        <Filename Value="extern.pas"/>
+        <Filename Value="mtpool.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit2>
       <Unit3>
-        <Filename Value="mtpool.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit3>
-      <Unit4>
         <Filename Value="powell.pas"/>
         <IsPartOfProject Value="True"/>
-      </Unit4>
+      </Unit3>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -204,7 +200,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="multithreadprocs;alglib;ffmpeg"/>
+      <OtherUnitFiles Value="multithreadprocs;ffmpeg"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Parsing>
