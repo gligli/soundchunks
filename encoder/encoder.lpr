@@ -704,7 +704,7 @@ begin
 
     if codes[iCode].ExtraBitCount > 0 then
     begin
-      itemBits := itemBits or (codes[iCode].ExtraBits shl itemBitCnt);
+      itemBits := codes[iCode].ExtraBits or (itemBits shl codes[iCode].ExtraBitCount);
       itemBitCnt += codes[iCode].ExtraBitCount;
     end;
 
@@ -720,15 +720,15 @@ begin
         begin
           if iCodingBlocks = prevCodingBlocks then
           begin
-            itemBits := itemBits or (0 shl itemBitCnt);
+            itemBits := 0 or (itemBits shl 1);
             itemBitCnt += 1;
           end
           else
           begin
-            itemBits := itemBits or (1 shl itemBitCnt);
+            itemBits := 1 or (itemBits shl 1);
             itemBitCnt += 1;
 
-            itemBits := itemBits or (iCodingBlocks shl itemBitCnt);
+            itemBits := iCodingBlocks or (itemBits shl codingBlocksBits);
             itemBitCnt += codingBlocksBits;
 
             prevCodingBlocks := iCodingBlocks;
@@ -736,11 +736,11 @@ begin
         end
         else
         begin
-          itemBits := itemBits or (iCodingBlocks shl itemBitCnt);
+          itemBits := iCodingBlocks or (itemBits shl codingBlocksBits);
           itemBitCnt += codingBlocksBits;
         end;
 
-        itemBits := itemBits or (codeValue shl itemBitCnt);
+        itemBits := codeValue or (itemBits shl codingBlocks[iCodingBlocks].BitSize);
         itemBitCnt += codingBlocks[iCodingBlocks].BitSize;
 
         coded := True;
@@ -751,20 +751,20 @@ begin
     end;
     Assert(coded);
 
-    overallBits := overallBits or (itemBits shl overallBitCnt);
+    overallBits := itemBits or (overallBits shl itemBitCnt);
     overallBitCnt += itemBitCnt;
     while overallBitCnt >= 16 do
     begin
       overallBitCnt -= 16;
-      DoWord(overallBits);
-      overallBits := overallBits shr 16;
+      DoWord(overallBits shr overallBitCnt);
+      overallBits := overallBits and ((1 shl overallBitCnt) - 1);
     end;
   end;
 
   if overallBitCnt > 0 then
   begin
     Assert(overallBitCnt <= 16);
-    DoWord(overallBits);
+    DoWord(overallBits shl (16 - overallBitCnt));
   end;
 end;
 
