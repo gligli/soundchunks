@@ -354,14 +354,16 @@ gsc_init:
 	move.w	#0,gsc_coding_blocks_dummy.w
 
 	; prepare decoding
+	
 	lea	gsc_header_size(a0),a1
 	sub.l	#gsc_header_size,d0
 	move.l	a1,gsc_start_ptr.w
 	adda.l	d0,a1
 	move.l	a1,gsc_end_ptr.w
 	
-	move.l	gsc_start_ptr.w,a0
-	bsr.w	gsc_next_frame
+	move.l	gsc_start_ptr.w,gsc_cur_indexes_ptr.w
+	add.w	#%10011000000+40,gsc_lmc_next_att.w
+	move.w	#-1,gsc_cur_indexes_left.w
 
 	; set Microwire mask register
 	move.w	#$7ff,$ffff8924.w
