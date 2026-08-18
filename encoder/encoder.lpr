@@ -591,7 +591,7 @@ var
   end;
 
 var
-  iCB0, iCB1, iCB2, iCB3: Byte;
+  iCB0, iCB1, iCB2, iCB3: Cardinal;
 
 begin
   Result := High(UInt64);
@@ -1466,13 +1466,13 @@ begin
 
   // pass 1
 
-  BlockSampleCount := ChunkSize;
-
 {$ifdef ATARI_STE}
   ChunksPerAttenuation := Max(1, Round(ChunksPerAttenuation / AttenuationChunkRatioMul));
 {$else}
   ChunksPerAttenuation := Max(1, Round(SampleRate * CAttenuationMilliseconds / (1000.0 * ChunkSize * AttenuationChunkRatioMul)));
 {$endif}
+
+  BlockSampleCount := ChunkSize * ChunksPerAttenuation;
 
   // ensure SrcData ends on a full block
   psc := SampleCount;
