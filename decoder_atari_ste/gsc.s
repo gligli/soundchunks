@@ -39,8 +39,10 @@ gsc_dmasnd_phase	EQU	gsc_cur_indexes_left-2
 gsc_lmc_next_att	EQU	gsc_dmasnd_phase-2
 gsc_bits_val		EQU	gsc_lmc_next_att-2
 gsc_bits_cnt		EQU	gsc_bits_val-2
-gsc_coding_blocks	EQU	gsc_bits_cnt-2
-lo_var_gsc_end		EQU	gsc_coding_blocks
+gsc_coding_blocks_bits	EQU	gsc_bits_cnt-2
+gsc_coding_blocks_val	EQU	gsc_coding_blocks_bits-2
+gsc_coding_blocks_dummy	EQU	gsc_coding_blocks_val-2
+lo_var_gsc_end		EQU	gsc_coding_blocks_dummy
 			
 lo_buf_gsc_end		EQU	lo_buf_main_end
 
@@ -88,7 +90,7 @@ gsc_timer_a_init_int:
 	endm
 	
 gsc_timer_a_update_int:
-	movem.l	a0/a1/a2/a3/a4/d0/d1/d2/d5/d6/d7,-(sp)
+	movem.l	a0/a1/a2/a3/a4/d0/d1/d2/d3/d5/d6/d7,-(sp)
 
 	; sync only on second buffer (ie. half the time, good enough)
 	tst.w	gsc_dmasnd_phase.w
@@ -131,18 +133,19 @@ gsc_timer_a_update_int:
 	lea	(gsc_audio_buf),a1
 	adda.w	d0,a1
 
-	bra.s	.begin_decode
+	cmpi.w	#-1,gsc_cur_indexes_left.w
+	bne.s	.begin_decode
 
 .next_frame:
 	
-	move.l	a2,a0
+	move.l	gsc_cur_indexes_ptr.w,a0
 	bsr.w	gsc_next_frame
 
 .begin_decode:
 	
 	; restore decoding state
 	move.l	gsc_cur_indexes_ptr.w,a2
-	lea	gsc_coding_blocks.w,a3
+	lea	gsc_coding_blocks_val.w,a3
 	move.l	gsc_cur_chunks_ptr.w,a4
 	move.w	gsc_bits_val.w,d5
 	move.w	gsc_bits_cnt.w,d6
@@ -153,47 +156,80 @@ gsc_timer_a_update_int:
 	neg.w	d0
 	add.w	#%10011000000+40,d0
 	move.w	d0,gsc_lmc_next_att.w
-		
+	
+	; decode mirrors & chunk index & upload chunk data to dmasnd buffer
 	move.w	#gsc_chunks_per_att-1,d7
 	.chunk_per_att_lp:
-		subq.w	#1,gsc_cur_indexes_left.w
-		bmi.s	.next_frame
-			
+
+		; decode mirors
 		moveq	#0,d0
 		get_bits d0,2
 		
-		moveq	#0,d1
-		get_bit d1
-		move.b	0(a3,d1.w),d1
-
+		; decode chunk index
 		moveq	#0,d2
+		get_bit d2
+		moveq	#0,d3
+		move.b	2(a3,d2.w),d3
+		moveq	#0,d1
 		.idx_bit_lp:
-			get_bit	d2
-			lsr.b	#1,d1
-			bne.s	.idx_bit_lp
-		mulu.w	#gsc_chunk_size,d2
+			get_bit	d1
+			dbra.w	d3,.idx_bit_lp
+		add.b	-1(a3,d2.w),d1
+		mulu.w	#gsc_chunk_size,d1
 		move.l	a4,a0
-		adda.l	d2,a0	
-		
-		btst	#1,d0
-		bne.s	.positive_reversed_chunk
-		
-		.positive_forward_chunk:
-			rept	gsc_chunk_size
-				move.b	(a0)+,(a1)+
-			endr
-			dbra.w	d7,.chunk_per_att_lp
-			bra.s	.chunk_per_att_end
-		
-		.positive_reversed_chunk:
-			addq.l	#gsc_chunk_size,a0
+		adda.l	d1,a0
+
+		; upload chunk data to dmasnd buffer
+		btst.l	#0,d0
+		bne.s	.negative_any_chunk
+
+		.positive_any_chunk:
+			btst.l	#1,d0
+			bne.s	.positive_reversed_chunk
 			
-			rept	gsc_chunk_size
-				move.b	-(a0),(a1)+
-			endr
-			dbra.w	d7,.chunk_per_att_lp
+			.positive_forward_chunk:
+				rept	gsc_chunk_size
+					move.b	(a0)+,(a1)+
+				endr
+				dbra.w	d7,.chunk_per_att_lp
+				bra.s	.chunk_per_att_end
+			
+			.positive_reversed_chunk:
+				addq.l	#gsc_chunk_size,a0
+				
+				rept	gsc_chunk_size
+					move.b	-(a0),(a1)+
+				endr
+				dbra.w	d7,.chunk_per_att_lp
+				bra.s	.chunk_per_att_end
 	
+		.negative_any_chunk:
+			btst.l	#1,d0
+			bne.s	.negative_reversed_chunk
+			
+			.negative_forward_chunk:
+				rept	gsc_chunk_size
+					move.b	(a0)+,d0
+					neg.b	d0
+					move.b	d0,(a1)+
+				endr
+				dbra.w	d7,.chunk_per_att_lp
+				bra.s	.chunk_per_att_end
+			
+			.negative_reversed_chunk:
+				addq.l	#gsc_chunk_size,a0
+				
+				rept	gsc_chunk_size
+					move.b	-(a0),d0
+					neg.b	d0
+					move.b	d0,(a1)+
+				endr
+				dbra.w	d7,.chunk_per_att_lp
+				
 	.chunk_per_att_end:	
+
+	; we uploaded gsc_chunks_per_att to dmasnd
+	subi.w	#gsc_chunks_per_att,gsc_cur_indexes_left.w
 
 	; save decoding state
 	move.l	a2,gsc_cur_indexes_ptr.w
@@ -203,7 +239,7 @@ gsc_timer_a_update_int:
 	; interrupt not "in service" anymore
 	bclr.b	#5,$fffffa0f.w  		
 
-	movem.l	(sp)+,a0/a1/a2/a3/a4/d0/d1/d2/d5/d6/d7
+	movem.l	(sp)+,a0/a1/a2/a3/a4/d0/d1/d2/d3/d5/d6/d7
 	rte
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -246,7 +282,8 @@ gsc_next_frame:
 	lsr.w	#4,d0
 	ori.w	#%10001000000,d0		; bass
 	bsr.w	gsc_microwire_write_wait
-	
+
+	; store chunk ptr
 	move.l	a0,gsc_cur_chunks_ptr.w
 	
 	; skip chunks
@@ -256,16 +293,41 @@ gsc_next_frame:
 	move.w	(a0)+,gsc_cur_indexes_left.w
 	
 	; read coding blocks
-	move.w	(a0)+,gsc_coding_blocks.w
+	move.w	(a0)+,gsc_coding_blocks_val.w
 	
+	; store indexes ptr
 	move.l	a0,gsc_cur_indexes_ptr.w
 	
+	; convert coding block values to coding bits
+	
+	move.b	gsc_coding_blocks_val+0.w,d1
+	subq.b	#1,d1
+	moveq	#-1,d2
+	.lo_cb_val_lp:
+		addq.b	#1,d2
+		lsr.b	#1,d1
+		bne.s	.lo_cb_val_lp
+	move.b	d2,gsc_coding_blocks_bits+0.w
+	
+	move.b	gsc_coding_blocks_val+1.w,d1
+	subq.b	#1,d1
+	moveq	#-1,d2
+	.hi_cb_val_lp:
+		addq.b	#1,d2
+		lsr.b	#1,d1
+		bne.s	.hi_cb_val_lp
+	move.b	d2,gsc_coding_blocks_bits+1.w
+		
 	; initial bit packing state
 	move.w	#0,gsc_bits_val.w
 	move.w	#0,gsc_bits_cnt.w
 	
-	lea.l	gsc_cur_indexes_left.w,a0
-	moveq	#8,d7
+	lea	gsc_cur_indexes_left.w,a0
+	moveq	#1,d7
+	bsr.w	print_buffer
+
+	lea	gsc_coding_blocks_dummy.w,a0
+	moveq	#3,d7
 	bsr.w	print_buffer
 
 	movem.l	(sp)+,a0/d0/d1/d2
@@ -278,6 +340,7 @@ gsc_init:
 
 	; initial state
 	move.w	#gsc_audio_buf_size,gsc_dmasnd_phase.w
+	move.w	#0,gsc_coding_blocks_dummy.w
 
 	; prepare decoding
 	lea	gsc_header_size(a0),a1
