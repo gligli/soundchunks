@@ -90,7 +90,7 @@ gsc_timer_a_init_int:
 	endm
 	
 gsc_timer_a_update_int:
-	movem.l	a0/a1/a2/a3/a4/d0/d1/d2/d3/d5/d6/d7,-(sp)
+	movem.l	a0-a4/d0-d7,-(sp)
 
 	; sync only on second buffer (ie. half the time, good enough)
 	tst.w	gsc_dmasnd_phase.w
@@ -122,7 +122,8 @@ gsc_timer_a_update_int:
 	.skew_end:
 
 	; send attenuation to LMC1992 thru Microwire (when this command takes effect in the LMC, we are synced with the buffer start)
-	move.w	gsc_lmc_next_att.w,$ffff8922.w
+	move.w	gsc_lmc_next_att.w,d0
+	bsr.w	gsc_microwire_write_wait
 	
 	; actual decoding
 
@@ -161,9 +162,11 @@ gsc_timer_a_update_int:
 	move.w	#gsc_chunks_per_att-1,d7
 	.chunk_per_att_lp:
 
-		; decode mirors
+		; decode mirrors
 		moveq	#0,d0
-		get_bits d0,2
+		get_bit d0	; negative?
+		moveq	#0,d4
+		get_bit d4	; reversed?
 		
 		; decode chunk index
 		moveq	#0,d2
@@ -175,16 +178,25 @@ gsc_timer_a_update_int:
 			get_bit	d1
 			dbra.w	d3,.idx_bit_lp
 		add.b	-1(a3,d2.w),d1
-		mulu.w	#gsc_chunk_size,d1
+
+		ifeq	gsc_chunk_size-6
+			add.w	d1,d1
+			move.w	d1,d2
+			add.w	d2,d2
+			add.w	d2,d1
+		else
+			mulu.w	#gsc_chunk_size-6,d1
+		endif
+		
 		move.l	a4,a0
 		adda.l	d1,a0
 
 		; upload chunk data to dmasnd buffer
-		btst.l	#0,d0
+		tst.b	d0
 		bne.s	.negative_any_chunk
 
 		.positive_any_chunk:
-			btst.l	#1,d0
+			tst.b	d4
 			bne.s	.positive_reversed_chunk
 			
 			.positive_forward_chunk:
@@ -204,7 +216,7 @@ gsc_timer_a_update_int:
 				bra.s	.chunk_per_att_end
 	
 		.negative_any_chunk:
-			btst.l	#1,d0
+			tst.b	d4
 			bne.s	.negative_reversed_chunk
 			
 			.negative_forward_chunk:
@@ -239,7 +251,7 @@ gsc_timer_a_update_int:
 	; interrupt not "in service" anymore
 	bclr.b	#5,$fffffa0f.w  		
 
-	movem.l	(sp)+,a0/a1/a2/a3/a4/d0/d1/d2/d3/d5/d6/d7
+	movem.l	(sp)+,a0-a4/d0-d7
 	rte
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -260,6 +272,13 @@ gsc_microwire_write_wait:
 	; gsc_next_frame: handle changing frame (a0: pointer on frame start)
 gsc_next_frame:
 	movem.l	a0/d0/d1/d2,-(sp)
+	
+	; test	end-of-data and loop
+	cmpa.l	gsc_end_ptr.w,a0
+	bmi.s	.no_eof
+	.eof:
+		move.l	gsc_start_ptr.w,a0
+	.no_eof:
 	
 	; read chunk count
 	moveq	#0,d2
@@ -322,14 +341,6 @@ gsc_next_frame:
 	move.w	#0,gsc_bits_val.w
 	move.w	#0,gsc_bits_cnt.w
 	
-	lea	gsc_cur_indexes_left.w,a0
-	moveq	#1,d7
-	bsr.w	print_buffer
-
-	lea	gsc_coding_blocks_dummy.w,a0
-	moveq	#3,d7
-	bsr.w	print_buffer
-
 	movem.l	(sp)+,a0/d0/d1/d2
 	rts
 
@@ -344,6 +355,7 @@ gsc_init:
 
 	; prepare decoding
 	lea	gsc_header_size(a0),a1
+	sub.l	#gsc_header_size,d0
 	move.l	a1,gsc_start_ptr.w
 	adda.l	d0,a1
 	move.l	a1,gsc_end_ptr.w

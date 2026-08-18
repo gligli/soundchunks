@@ -175,7 +175,7 @@
         </Mode0>
       </Modes>
     </RunParams>
-    <Units Count="4">
+    <Units Count="3">
       <Unit0>
         <Filename Value="encoder.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -188,10 +188,6 @@
         <Filename Value="mtpool.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit2>
-      <Unit3>
-        <Filename Value="powell.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit3>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

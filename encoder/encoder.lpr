@@ -1133,6 +1133,7 @@ end;
 procedure TFrame.SaveStream(AStream: TStream);
 var
   iChunk, iSample, iChannel, s1, s2: Integer;
+  sb: ShortInt;
   w: UInt64;
   cl: TChunkList;
 begin
@@ -1142,6 +1143,15 @@ begin
   Assert(reducedChunks.Count - 1 <= High(Byte));
   AStream.WriteByte(reducedChunks.Count - 1);
   AStream.WriteByte((TLMC1992Filter(filter[0]).bass_level shl 4) or TLMC1992Filter(filter[0]).treb_level);
+
+  Assert(encoder.ChunkBitDepth = 8, 'ChunkBitDepth not supported');
+  cl := reducedChunks;
+  for iChunk := 0 to cl.Count - 1 do
+    for iSample := 0 to encoder.ChunkSize - 1 do
+    begin
+      sb := cl[iChunk].dstData[iSample];
+      AStream.Write(sb,1);
+    end;
 {$else}
   w := (encoder.ChannelCount shl 8) or CStreamVersion;
   AStream.WriteWord(w and $ffff);
@@ -1153,10 +1163,8 @@ begin
   AStream.WriteDWord(w and $ffffffff);
   w := encoder.ChunksPerAttenuation;
   AStream.WriteWord(w and $ffff);
-{$endif}
 
   cl := reducedChunks;
-
   case encoder.ChunkBitDepth of
     8:
       for iChunk := 0 to cl.Count - 1 do
@@ -1186,6 +1194,8 @@ begin
     else
       Assert(False, 'ChunkBitDepth not supported');
   end;
+{$endif}
+
 
 {$ifdef ATARI_STE}
   Assert(plainChunks.Count div encoder.ChannelCount - 1 <= High(Word));
@@ -1300,14 +1310,18 @@ begin
   for iChunk := 0 to plainChunks.Count - 1 do
   begin
     piggyCodes[iChunk].Code := plainChunks[iChunk].reducedChunk.index;
-    piggyCodes[iChunk].ExtraBits := Ord(plainChunks[iChunk].dstNegative) or (Ord(plainChunks[iChunk].dstReversed) shl 1);
-    piggyCodes[iChunk].ExtraBitCount := 2;
 
     if iChunk mod (encoder.ChunksPerAttenuation * encoder.ChannelCount) = 0 then
     begin
-      piggyCodes[iChunk].ExtraBits := (piggyCodes[iChunk].ExtraBits shl CMaxAttenuationBits) or plainChunks[iChunk].dstAttenuation;
-      piggyCodes[iChunk].ExtraBitCount += CMaxAttenuationBits;
+      piggyCodes[iChunk].ExtraBits := plainChunks[iChunk].dstAttenuation;
+      piggyCodes[iChunk].ExtraBitCount := CMaxAttenuationBits;
     end;
+
+    piggyCodes[iChunk].ExtraBits := Ord(plainChunks[iChunk].dstNegative) or (piggyCodes[iChunk].ExtraBits shl 1);
+    piggyCodes[iChunk].ExtraBitCount += 1;
+
+    piggyCodes[iChunk].ExtraBits := Ord(plainChunks[iChunk].dstReversed) or (piggyCodes[iChunk].ExtraBits shl 1);
+    piggyCodes[iChunk].ExtraBitCount += 1;
   end;
 
   dstPiggyCoder.Free;
