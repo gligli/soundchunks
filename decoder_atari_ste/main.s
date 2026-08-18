@@ -190,6 +190,7 @@ print_buffer_word_lp:
 	dbra	d7,print_buffer_word_lp
 
 	move.b	#13,(a1)+
+	move.b	#10,(a1)+
 	move.b	#0,(a1)+
 	
 	move.l	#print_data,-(sp)
@@ -428,7 +429,7 @@ main:
 	move    #$2300,SR
 	
 	; init SoundChunks replayer
-	move.l	gsc_file_ptr.l,a1
+	move.l	gsc_file_ptr.l,a0
 	move.l	gsc_file_size.l,d0
 	bsr.w	gsc_init
 
@@ -436,7 +437,7 @@ main:
 main_loop:
 
 	move.l	#$42381337,d0
-	moveq.l	#50,d3
+	moveq.l	#38,d3
 	.dummy_load_lp:
 		rept 	10
 			muls	d0,d0
