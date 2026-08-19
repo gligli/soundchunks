@@ -185,7 +185,7 @@ gsc_timer_a_update_int:
 			add.w	d2,d2
 			add.w	d2,d1
 		else
-			mulu.w	#gsc_chunk_size-6,d1
+			mulu.w	#gsc_chunk_size,d1
 		endif
 		
 		move.l	a4,a0
@@ -353,6 +353,9 @@ gsc_init:
 	move.w	#gsc_audio_buf_size,gsc_dmasnd_phase.w
 	move.w	#0,gsc_coding_blocks_dummy.w
 
+	; set Microwire mask register
+	move.w	#$7ff,$ffff8924.w
+
 	; prepare decoding
 	
 	lea	gsc_header_size(a0),a1
@@ -364,9 +367,6 @@ gsc_init:
 	move.l	gsc_start_ptr.w,gsc_cur_indexes_ptr.w
 	add.w	#%10011000000+40,gsc_lmc_next_att.w
 	move.w	#-1,gsc_cur_indexes_left.w
-
-	; set Microwire mask register
-	move.w	#$7ff,$ffff8924.w
 
 	; 25033Hz Mono Looping DMA Sound System
 	clr.b	$ffff8901.w

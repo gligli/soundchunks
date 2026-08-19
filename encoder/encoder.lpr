@@ -598,7 +598,7 @@ begin
 
   if codingBlocksBits = 2 then
   begin
-    for iCB0 := 1 to highestCode + 1 do
+    for iCB0 := 2 to highestCode + 1 do
       for iCB1 := iCB0 to highestCode + 1 do
         for iCB2 := iCB1 to highestCode + 1 do
           for iCB3 := iCB2 to highestCode + 1 do
@@ -611,7 +611,7 @@ begin
   end
   else if codingBlocksBits = 1 then
   begin
-    for iCB0 := 1 to highestCode + 1 do
+    for iCB0 := 2 to highestCode + 1 do
       for iCB1 := iCB0 to highestCode + 1 do
       begin
         locCodingBlocks[0].Value := iCB0; locCodingBlocks[1].Value := iCB1;
