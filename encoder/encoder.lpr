@@ -1343,7 +1343,7 @@ begin
     WriteLn('[Convert] ', InputFN);
     wavFN := GetTempFileName + '.wav';
 {$ifdef ATARI_STE}
-    DoExternalSOX(InputFN, wavFN, 25033, True);
+    DoExternalSOX(InputFN, wavFN, 25033, True, True);
 {$else}
     DoExternalSOX(inputFN, wavFN);
 {$endif}

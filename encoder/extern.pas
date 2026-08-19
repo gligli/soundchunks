@@ -128,7 +128,7 @@ function HalfNumberOfProcessors: Integer;
 function QuarterNumberOfProcessors: Integer;
 
 procedure DoExternalSKLearn(Dataset: TDoubleDynArray2;  ClusterCount, Precision: Integer; Compiled, PrintProgress: Boolean; var Clusters: TIntegerDynArray; var Centroids: TDoubleDynArray2);
-procedure DoExternalSOX(AFNIn, AFNOut: String; SampleRate: Integer = 0; ForceMono: Boolean = False);
+procedure DoExternalSOX(AFNIn, AFNOut: String; SampleRate: Integer = 0; ForceMono: Boolean = False; Normalize: Boolean = False);
 function DoExternalEAQUAL(AFNRef, AFNTest: String; PrintStats, UseDIX: Boolean; BlockLength: Integer): Double;
 
 procedure LZCompress(ASourceStream: TStream; PrintProgress, Decompress: Boolean; ADestStream: TStream);
@@ -669,7 +669,7 @@ begin
   end;
 end;
 
-procedure DoExternalSOX(AFNIn, AFNOut: String; SampleRate: Integer; ForceMono: Boolean);
+procedure DoExternalSOX(AFNIn, AFNOut: String; SampleRate: Integer; ForceMono, Normalize: Boolean);
 var
   i: Integer;
   Params, Output, ErrOut: String;
@@ -687,6 +687,8 @@ begin
   Params += '"' + AFNOut + '"';
   if SampleRate > 0 then
     Params += ' rate -v ' + IntToStr(SampleRate);
+  if Normalize then
+    Params += ' norm';
   Process.Parameters.Add(Params);
 
   Process.ShowWindow := swoHIDE;
