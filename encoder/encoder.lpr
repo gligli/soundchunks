@@ -54,6 +54,8 @@ type
 
   { TLMC1992Filter }
 
+  // code ported from https://framagit.org/hatari/hatari/-/blob/main/src/dmaSnd.c?ref_type=heads
+  // updated with code from https://docs.rs/ym2149-sndh-replayer/latest/src/ym2149_sndh_replayer/lmc1992.rs.html
   TLMC1992Filter = class(TEmphasisFilter)
   const
     TONE_STEPS = 13;
@@ -65,13 +67,17 @@ type
   private
     bass_table: array[0 .. TONE_STEPS - 1] of TFirstOrder;
     treb_table: array[0 .. TONE_STEPS - 1] of TFirstOrder;
-    coef: array[Boolean{DeFilter?}, 0 .. 4] of Double;
-    data: array[Boolean{DeFilter?}, 0 .. 1] of Double;
+
+    coef: array[Boolean{DeFilter?}, Boolean{treble?}] of TFirstOrder;
+
+    data: array[Boolean{DeFilter?}, Boolean{treble?}] of record
+      x1, y1: Double;
+    end;
 
     function Bass_Shelf(g, fc, Fs: Double): TFirstOrder;
     function Treble_Shelf(g, fc, Fs: Double): TFirstOrder;
 
-    function BiQuad(s: Double; ADefilter: Boolean): Double;
+    function BiQuad(input: Double; ADefilter, ATreble: Boolean): Double;
   public
     bass_level, treb_level: Byte;
 
@@ -219,6 +225,7 @@ type
     ChunksPerAttenuation: Integer;
     FrameCount: Integer;
 
+    GainFactor: Double;
     FramesLeft: Integer;
 
     SrcHeader: array[$00..$2b] of Byte;
@@ -230,9 +237,9 @@ type
     function CreateEmphasisFilter: TEmphasisFilter;
 
     class function make16BitSample(smp: Double): SmallInt;
-    class function makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean): TOutputSample;
+    class function makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean; gain: Double): TOutputSample;
     class function makeFloatSample(smp: SmallInt): Double;
-    class function makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean): Double;
+    class function makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean; gain: Double): Double;
     class function SolveAttenuation(chunkSz: Integer; samples: PDouble): Byte;
     class function ComputeAttenuation(Attenuation: Integer): Double;
     class procedure ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
@@ -318,50 +325,65 @@ end;
 { TLMC1992Filter }
 
 function TLMC1992Filter.Bass_Shelf(g, fc, Fs: Double): TFirstOrder;
+var
+  sqrt_g, k, k_sqrt_g, k_over_sqrt_g, denom: Double;
 begin
-	// g, fc, Fs must be positive real numbers > 0.0
-	if g < 1.0 then
-		Result.a1 := (Tan(Pi*fc/Fs) - g  ) / (Tan(Pi*fc/Fs) + g  )
-	else
-		Result.a1 := (Tan(Pi*fc/Fs) - 1.0) / (Tan(Pi*fc/Fs) + 1.0);
+  // Linear gain and its square root
+  sqrt_g := Sqrt(g);
 
-	Result.b0 := (1.0 + Result.a1) * (g - 1.0) / 2.0 + 1.0;
-	Result.b1 := (1.0 + Result.a1) * (g - 1.0) / 2.0 + Result.a1;
+  // Bilinear transform: K = tan(π × fc / fs)
+  k := Tan(Pi*fc/Fs);
+
+  // Coefficients for H(s) = (s + ω₀×√G) / (s + ω₀/√G)
+  // After bilinear transform:
+  k_sqrt_g := k * sqrt_g;
+  k_over_sqrt_g := k / sqrt_g;
+  denom := 1.0 + k_over_sqrt_g;
+
+  Result.b0 := (1.0 + k_sqrt_g) / denom;
+  Result.b1 := (k_sqrt_g - 1.0) / denom;
+  Result.a1 := (k_over_sqrt_g - 1.0) / denom;
 end;
 
 function TLMC1992Filter.Treble_Shelf(g, fc, Fs: Double): TFirstOrder;
+var
+  sqrt_g, k, k_sqrt_g, denom: Double;
 begin
-  // g, fc, Fs must be positive real numbers > 0.0
-  if g < 1.0 then
-  	Result.a1 := (g*Tan(Pi*fc/Fs) - 1.0) / (g*Tan(Pi*fc/Fs) + 1.0)
-  else
-  	Result.a1 := (Tan(Pi*fc/Fs) - 1.0) /   (Tan(Pi*fc/Fs) + 1.0);
+  // Linear gain and its square root
+  sqrt_g :=  Sqrt(g);
 
-  Result.b0 := 1.0 + (1.0 - Result.a1) * (g - 1.0) / 2.0;
-	Result.b1 := Result.a1  + (Result.a1 - 1.0) * (g - 1.0) / 2.0;
+  // Bilinear transform: K = tan(π × fc / fs)
+  k := Tan(Pi*fc/Fs);
+
+  // First-order high shelf via bilinear transform:
+  // H(s) = (s×√G + ω₀) / (s/√G + ω₀)
+  // After transform with pre-warping:
+  // b0 = √G × (√G + k) / (1 + k×√G)
+  // b1 = √G × (k - √G) / (1 + k×√G)
+  // a1 = (k×√G - 1) / (1 + k×√G)
+  k_sqrt_g := k * sqrt_g;
+  denom := 1.0 + k_sqrt_g;
+
+  Result.b0 := sqrt_g * (sqrt_g + k) / denom;
+  Result.b1 := sqrt_g * (k - sqrt_g) / denom;
+  Result.a1 := (k_sqrt_g - 1.0) / denom;
 end;
 
-function TLMC1992Filter.BiQuad(s: Double; ADefilter: Boolean): Double;
+function TLMC1992Filter.BiQuad(input: Double; ADefilter, ATreble: Boolean): Double;
+
+  function mul_add(x, a, b: Double): Double;
+  begin
+    Result := x * a + b;
+  end;
+
 var
-	a, yn: Double;
+	output: Double;
 begin
-	(* Input coefficients *)
-	(* biquad1  Note: 'a' coefficients are subtracted *)
-	a := s;	                              	      (* a=g*xn;               *)
-	a -= coef[ADefilter, 0]*data[ADefilter, 0];		(* a1;  wn-1             *)
-	a -= coef[ADefilter, 1]*data[ADefilter, 1];		(* a2;  wn-2             *)
-						(* If coefficient scale  *)
-						(* factor = 0.5 then     *)
-						(* multiply by 2         *)
-	(* Output coefficients *)
-	yn := coef[ADefilter, 2]*a;		    (* b0;                   *)
-	yn += coef[ADefilter, 3]*data[ADefilter, 0];	(* b1;                   *)
-	yn += coef[ADefilter, 4]*data[ADefilter, 1];	(* b2;                   *)
+  output := mul_add(coef[ADefilter, ATreble].b0, input, mul_add(coef[ADefilter, ATreble].b1, data[ADefilter, ATreble].x1, -coef[ADefilter, ATreble].a1 * data[ADefilter, ATreble].y1));
+  data[ADefilter, ATreble].x1 := input;
+  data[ADefilter, ATreble].y1 := output;
 
-	data[ADefilter, 1] := data[ADefilter, 0];			(* wn-1 -> wn-2;         *)
-	data[ADefilter, 0] := a;				    (* wn -> wn-1            *)
-
-  Result := yn;
+  Result := output;
 end;
 
 constructor TLMC1992Filter.Create(ASampleRate: Integer);
@@ -419,23 +441,28 @@ end;
 
 procedure TLMC1992Filter.Init;
 var
-  de: Boolean;
+  de, tr: Boolean;
 begin
   for de := False to True do
-  begin
-    data[de, 0] := 0.0;
-    data[de, 1] := 0.0;
-  end;
+    for tr := False to True do
+    begin
+      data[de, tr].x1 := 0.0;
+      data[de, tr].y1 := 0.0;
+    end;
 end;
 
 function TLMC1992Filter.PreFilter(s: Double): Double;
 begin
-  Result := BiQuad(s, False);
+  Result := s;
+  Result := BiQuad(Result, False, False);
+  Result := BiQuad(Result, False, True);
 end;
 
 function TLMC1992Filter.DeFilter(s: Double): Double;
 begin
-  Result := BiQuad(s, True);
+  Result := s;
+  Result := BiQuad(Result, True, False);
+  Result := BiQuad(Result, True, True);
 end;
 
 procedure TLMC1992Filter.Set_Tone_Level(set_bass, set_treb: Byte);
@@ -448,12 +475,8 @@ begin
   for de := True downto False do
   begin
     // 13 levels; 0 through 12 correspond with -12dB to 12dB in 2dB steps
-    coef[de, 0] := treb_table[set_treb].a1 + bass_table[set_bass].a1;
-    coef[de, 1] := treb_table[set_treb].a1 * bass_table[set_bass].a1;
-    coef[de, 2] := treb_table[set_treb].b0 * bass_table[set_bass].b0;
-    coef[de, 3] := treb_table[set_treb].b0 * bass_table[set_bass].b1 +
-                     treb_table[set_treb].b1 * bass_table[set_bass].b0;
-    coef[de, 4] := treb_table[set_treb].b1 * bass_table[set_bass].b1;
+    coef[de, False] := bass_table[set_bass];
+    coef[de, True] := treb_table[set_treb];
 
     set_bass := TONE_STEPS - 1 - set_bass;
     set_treb := TONE_STEPS - 1 - set_treb;
@@ -785,7 +808,7 @@ var
 begin
   SetLength(Result, frame.encoder.ChunkSize);
   for iSample := 0 to High(Result) do
-    Result[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, frame.encoder.ChunkSize - 1 - iSample, iSample)], 2, dstAttenuation, dstNegative).AsDouble;
+    Result[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, frame.encoder.ChunkSize - 1 - iSample, iSample)], 2, dstAttenuation, dstNegative, 1.0).AsDouble;
 end;
 
 procedure TChunk.ComputeFromFeatures(AFeatures: PDouble);
@@ -794,7 +817,7 @@ var
 begin
   SetLength(dstData, frame.encoder.ChunkSize);
   for iSample := 0 to High(dstData) do
-    dstData[iSample] := TEncoder.makeOutputSample(AFeatures[iSample], frame.encoder.ChunkBitDepth, 0, False).AsInt;
+    dstData[iSample] := TEncoder.makeOutputSample(AFeatures[iSample], frame.encoder.ChunkBitDepth, 0, False, frame.encoder.GainFactor).AsInt;
 end;
 
 procedure TChunk.ComputeDstAttributes;
@@ -835,7 +858,7 @@ var
 begin
   SetLength(dstData, frame.encoder.ChunkSize);
   for i := 0 to High(dstData) do
-    dstData[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(dstData) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative).AsInt;
+    dstData[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(dstData) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative, frame.encoder.GainFactor).AsInt;
 end;
 
 constructor TFrame.Create(enc: TEncoder; idx, startSmp, endSmp: Integer);
@@ -1081,10 +1104,10 @@ begin
 
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
-      Dataset[dsIdx + 0, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, False);
-      Dataset[dsIdx + 1, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, True);
-      Dataset[dsIdx + 2, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, False);
-      Dataset[dsIdx + 3, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, True);
+      Dataset[dsIdx + 0, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, False, encoder.GainFactor);
+      Dataset[dsIdx + 1, iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, True, encoder.GainFactor);
+      Dataset[dsIdx + 2, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, False, encoder.GainFactor);
+      Dataset[dsIdx + 3, iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, True, encoder.GainFactor);
     end;
 
     Inc(dsIdx, 4);
@@ -1233,10 +1256,13 @@ end;
 procedure TFrame.SolveCompandingFilterSettings;
 var
   iChannel, iSample, iTreb, bestTreb: Integer;
+  bass_level: Byte;
   v, best: Double;
   ref: TDoubleDynArray2;
 begin
 {$ifdef ATARI_STE}
+  bass_level := TLMC1992Filter(filter[0]).bass_level;
+
   SetLength(ref, encoder.ChannelCount, SampleCount);
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
@@ -1249,7 +1275,7 @@ begin
   for iTreb := 0 to TLMC1992Filter.TONE_STEPS - 1 do
   begin
     for iChannel := 0 to encoder.ChannelCount - 1 do
-      TLMC1992Filter(filter[iChannel]).Set_Tone_Level(TLMC1992Filter.TONE_STEPS - 1, iTreb);
+      TLMC1992Filter(filter[iChannel]).Set_Tone_Level(bass_level, iTreb);
 
     MakeFrame(False);
 
@@ -1266,7 +1292,7 @@ begin
   end;
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
-    TLMC1992Filter(filter[iChannel]).Set_Tone_Level(TLMC1992Filter.TONE_STEPS - 1, bestTreb);
+    TLMC1992Filter(filter[iChannel]).Set_Tone_Level(bass_level, bestTreb);
 
   MakeFrame;
   //WriteLn(index:4, bestTreb:4, best * High(SmallInt) / (SampleCount * encoder.ChannelCount):12:3);
@@ -1297,7 +1323,7 @@ begin
 
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
-      smp := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, encoder.ChunkSize - 1 - iSample, iSample)], encoder.ChunkBitDepth, chunk.dstAttenuation, chunk.dstNegative);
+      smp := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, encoder.ChunkSize - 1 - iSample, iSample)], encoder.ChunkBitDepth, chunk.dstAttenuation, chunk.dstNegative, encoder.GainFactor);
 
       if InRange(pos[chunk.channel], 0, High(dstData[chunk.channel])) then
         dstData[chunk.channel, pos[chunk.channel]] := filter[chunk.channel].DeFilter(smp);
@@ -1667,6 +1693,7 @@ begin
   PiggyCodingBlocksBits := 1;
   PiggyCodingSolveByValue := True;
   NoSolveFilterSettings := False;
+  GainFactor := 0.5;
 {$else}
   ChunkSize := 4;
   ChunksPerAttenuation := 16;
@@ -1676,6 +1703,7 @@ begin
   PiggyCodingBlocksBits := 2;
   PiggyCodingSolveByValue := False;
   NoSolveFilterSettings := True;
+  GainFactor := 1.0;
 {$endif}
 
 end;
@@ -1714,7 +1742,7 @@ function TEncoder.CreateEmphasisFilter: TEmphasisFilter;
 begin
 {$ifdef ATARI_STE}
   Result := TLMC1992Filter.Create(SampleRate);
-  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.TONE_STEPS - 1, 0);
+  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.NEUTRAL_TONE + 3, TLMC1992Filter.NEUTRAL_TONE - 6);
 {$else}
   Result := TDeltaFilter.Create(SampleRate);
 {$endif}
@@ -1730,21 +1758,23 @@ begin
   Result := smp / High(SmallInt);
 end;
 
-class function TEncoder.makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean): TOutputSample;
+class function TEncoder.makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean; gain: Double): TOutputSample;
 var
-  obd: Integer;
+  obd, loBnd, upBnd: Integer;
   smp16, coeff: Double;
 begin
   coeff := ComputeAttenuation(Attenuation);
 
   obd := (1 shl (OutBitDepth - 1)) - 1;
-  smp16 := smp * obd * coeff;
+  smp16 := smp * obd * coeff * gain;
   if Negative then smp16 := -smp16;
-  Result.AsInt := EnsureRange(Round(smp16), -obd, obd);
-  Result.AsDouble := EnsureRange(smp16, -obd, obd);
+  loBnd := Floor(-obd * coeff);
+  upBnd := Ceil(obd * coeff);
+  Result.AsInt := EnsureRange(Round(smp16), loBnd, upBnd);
+  Result.AsDouble := EnsureRange(smp16, loBnd, upBnd);
 end;
 
-class function TEncoder.makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean): Double;
+class function TEncoder.makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean; gain: Double): Double;
 var
   obd, coeff: Double;
 begin
@@ -1752,7 +1782,7 @@ begin
 
   obd := (1 shl (OutBitDepth - 1)) - 1;
   if Negative then smp := -smp;
-  Result := smp / (obd * coeff);
+  Result := smp / (obd * coeff * gain);
   Result := EnsureRange(Result, -1.0, 1.0);
 end;
 
