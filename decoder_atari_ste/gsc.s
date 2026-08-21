@@ -7,12 +7,16 @@
 
 ; tweakable
 
+gsc_volume_compensation	EQU	0	; eg. 6 = 12dB
+
 gsc_chunk_size		EQU	6
 gsc_chunks_per_att	EQU	40
-gsc_lmc_sample_skew	EQU	10
 
 gsc_mfp_prescaler_value	EQU	200	; /!\ keep both gsc_mfp_prescaler_* synced!
 gsc_mfp_prescaler_code	EQU	7
+
+gsc_timer_skew		EQU	1
+gsc_lmc_sample_skew	EQU	10
 
 ; shouldn't be tweaked
 
@@ -25,7 +29,7 @@ gsc_audio_buf_size	EQU	gsc_chunks_per_att*gsc_chunk_size
 gsc_audio_dblbuf_size	EQU	gsc_audio_buf_size*2
 
 gsc_timer_data_num	EQU	mfp_clock_rate/(gsc_sample_rate/gsc_chunk_size/gsc_chunks_per_att)
-gsc_timer_data		EQU	gsc_timer_data_num/gsc_mfp_prescaler_value-1
+gsc_timer_data		EQU	gsc_timer_data_num/gsc_mfp_prescaler_value-gsc_timer_skew
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  VARIABLES  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -103,8 +107,9 @@ gsc_timer_a_update_int:
 		lea	(gsc_audio_buf+gsc_audio_buf_size+gsc_lmc_sample_skew),a1
 
 		; already synced?
-		movep.w	$ffff890b(a0),d1
-		cmp.w	a1,d1
+		movep.l	$ffff8907(a2),d1
+		andi.l	#$00ffffff,d1
+		cmp.l	a1,d1
 		bhs.s	.skew_end
 		
 		; stop Timer A
@@ -155,7 +160,7 @@ gsc_timer_a_update_int:
 	moveq	#0,d0
 	get_bits d0,4
 	neg.w	d0
-	add.w	#%10011000000+40,d0
+	add.w	#%10011000000+40-gsc_volume_compensation,d0
 	move.w	d0,gsc_lmc_next_att.w
 	
 	; decode mirrors & chunk index & upload chunk data to dmasnd buffer
@@ -275,7 +280,7 @@ gsc_next_frame:
 	
 	; test	end-of-data and loop
 	cmpa.l	gsc_end_ptr.w,a0
-	bmi.s	.no_eof
+	blo.s	.no_eof
 	.eof:
 		move.l	gsc_start_ptr.w,a0
 	.no_eof:
@@ -353,9 +358,6 @@ gsc_init:
 	move.w	#gsc_audio_buf_size,gsc_dmasnd_phase.w
 	move.w	#0,gsc_coding_blocks_dummy.w
 
-	; set Microwire mask register
-	move.w	#$7ff,$ffff8924.w
-
 	; prepare decoding
 	
 	lea	gsc_header_size(a0),a1
@@ -367,6 +369,19 @@ gsc_init:
 	move.l	gsc_start_ptr.w,gsc_cur_indexes_ptr.w
 	add.w	#%10011000000+40,gsc_lmc_next_att.w
 	move.w	#-1,gsc_cur_indexes_left.w
+
+	; set Microwire mask register
+	move.w	#$7ff,$ffff8924.w
+
+	; init LMC1992 thru Microwire
+	move.w	#%10011000000+40-gsc_volume_compensation,d0	; master volume
+	bsr.w	gsc_microwire_write_wait
+	move.w	#%10010000000+0,d0				; treble
+	bsr.w	gsc_microwire_write_wait
+	move.w	#%10001000000+12,d0				; bass
+	bsr.w	gsc_microwire_write_wait
+	move.w	#%10000000010,d0 				; mixer
+	bsr.w	gsc_microwire_write_wait
 
 	; 25033Hz Mono Looping DMA Sound System
 	clr.b	$ffff8901.w
@@ -423,6 +438,8 @@ gsc_finish:
 	move.w	#%10010000000+6,d0		; treble
 	bsr.w	gsc_microwire_write_wait
 	move.w	#%10001000000+6,d0		; bass
+	bsr.w	gsc_microwire_write_wait
+	move.w	#%10000000001,d0 		; mixer
 	bsr.w	gsc_microwire_write_wait
 
 	; restore ST-MFP-13 Vector (Timer A)
