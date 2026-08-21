@@ -394,14 +394,14 @@ var
 begin
   inherited Create(ASampleRate);
 
-  fc_bt := 118.2763;
-  fc_tt := 8438.756;
+  fc_bt := 118.2763 * Pi; //TODO: Gli: why Pi there to get something close to the hw?
+  fc_tt := 8438.756 * Sqrt(2.0) / 2.0; //TODO: Gli: why Sqrt(2.0) / 2.0 there to get something close to the hw?
   Fs := sampleRate;
 
-  if fc_tt > 0.5*0.8*Fs then
+  if fc_tt > 0.5*Fs then
   begin
-    fc_tt := 0.5*0.8*Fs;
-    dB_adjusted := 2.0 * 0.5*0.8*Fs/fc_tt;
+    fc_tt := 0.5*Fs;
+    dB_adjusted := 2.0 * 0.5*Fs/fc_tt;
   end
   else
   begin
@@ -452,17 +452,21 @@ begin
 end;
 
 function TLMC1992Filter.PreFilter(s: Double): Double;
+var
+  tr: Boolean;
 begin
   Result := s;
-  Result := BiQuad(Result, False, False);
-  Result := BiQuad(Result, False, True);
+  for tr := False to True do
+    Result := BiQuad(Result, False, tr);
 end;
 
 function TLMC1992Filter.DeFilter(s: Double): Double;
+var
+  tr: Boolean;
 begin
   Result := s;
-  Result := BiQuad(Result, True, False);
-  Result := BiQuad(Result, True, True);
+  for tr := False to True do
+    Result := BiQuad(Result, True, tr);
 end;
 
 procedure TLMC1992Filter.Set_Tone_Level(set_bass, set_treb: Byte);
