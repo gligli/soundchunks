@@ -5,8 +5,9 @@ vbl_idx		EQU	lo_var_base-4
 vbl_done	EQU	vbl_idx-4
 gsc_file_size	EQU	vbl_done-4
 gsc_file_ptr	EQU	gsc_file_size-4
-lo_var_main_end	EQU	gsc_file_ptr
-
+gsc_file_pos	EQU	gsc_file_ptr-4
+gsc_file_handle	EQU	gsc_file_pos-4
+lo_var_main_end	EQU	gsc_file_handle
 
 lo_buf_base	EQU	$7a00
 lo_buf_main_end	EQU	lo_buf_base
@@ -160,48 +161,6 @@ clear_screen_lp:
 	rts
 	
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; print_buffer (a0: word data, d7: number of words)
-print_buffer:
-	movem.l	a0-a1/d0-d3,-(sp)
-	subq.w	#1,d7
-	lea	print_data,a1
-	
-print_buffer_word_lp:	
-	move.w	(a0)+,d2
-
-	moveq	#3,d3
-		
-	print_buffer_nibble_lp:
-		rol.w	#4,d2
-		move.w	d2,d0
-		and.w	#$000f,d0
-		add.w	#'0',d0
-		cmp.w	#'9',d0
-		ble.s		.zn
-			add.w	#'a'-'9'-1,d0
-		.zn:
-
-		move.b	d0,(a1)+
-		
-		dbra	d3,print_buffer_nibble_lp
-	
-	move.b	#' ',(a1)+
-
-	dbra	d7,print_buffer_word_lp
-
-	move.b	#13,(a1)+
-	move.b	#10,(a1)+
-	move.b	#0,(a1)+
-	
-	move.l	#print_data,-(sp)
-	move.w	#$09,-(sp)
-	trap	#1
-	addq.l	#6,sp	
-
-	movem.l	(sp)+,a0-a1/d0-d3
-	rts
-	
-	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; print_text (a0: string)
 print_text:
 	movem.l	a0/d0,-(sp)
@@ -236,9 +195,9 @@ read_text:
 	rts
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; alloc_read_file (a0: file name; returns: d0: file size, a0: pointer on allocated data)	
-alloc_read_file:
-	movem.l	a5/a6/d6/d7,-(sp)
+	; alloc_read_file_beginning (a0: file name; returns: d0: file size, d7: file handle, a0: pointer on allocated data, a1: pointer on end of red data)	
+alloc_read_file_beginning:
+	movem.l	a6/d6,-(sp)
 
 	; open
 	move.w	0,-(sp)		; read only
@@ -271,7 +230,7 @@ alloc_read_file:
 	trap	#1
 	addq.l	#8,sp
 	tst.l	d0
-	bmi.w	.error
+	bmi.w	.error_no_open
 		
 .file_found:
 	move.l	d0,d7		; store handle
@@ -311,47 +270,86 @@ alloc_read_file:
 	lea	(file_read_message),a0
 	bsr.w	print_text
 
-	move.l	a6,a5
-	.read_loop:
-		; read
-		move.l	a5,-(sp)
-		move.l	#$200,-(sp)
-		move.w	d7,-(sp)
-		move.w	#$3f,-(sp)
-		trap	#1
-		adda.l	#12,sp
-
-		adda.l	d0,a5
-
-		tst.l	d0
-		bmi.s	.error
-		bne.s	.read_loop
-	
-	; close
+	; read
+	move.l	a6,-(sp)
+	move.l	#$2000,-(sp)
 	move.w	d7,-(sp)
-	move.w	#$3e,-(sp)
+	move.w	#$3f,-(sp)
 	trap	#1
-	addq.l	#4,sp
+	adda.l	#12,sp
+	tst.l	d0
+	bmi.s	.error
 	
-	move.l	d6,d0
 	move.l	a6,a0
 	
+	move.l	a6,a1
+	adda.l	d0,a1
+
+	move.l	d6,d0
+	
 .end:
-	movem.l	(sp)+,a5/a6/d6/d7
+	movem.l	(sp)+,a6/d6
 	rts
 	
 .error:
+	bsr.w	close_file
+
+.error_no_open:
+
 	lea	(file_error_message),a0
 	bsr.w	print_text
 	
 	moveq	#0,d0
 	move.l	d0,a0
+	move.l	d0,a1
 	
 	bra.s	.end
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; continue_read_file (d7: file handle, a1: pointer on end of red data; returns: a1: pointer on end of red data)	
+continue_read_file:
+	move.l	d0,-(sp)
+
+	; read
+	move.l	a1,-(sp)
+	move.l	#$2000,-(sp)
+	move.w	d7,-(sp)
+	move.w	#$3f,-(sp)
+	trap	#1
+	adda.l	#12,sp
+	tst.l	d0
+	bmi.s	.error
+	
+	adda.l	d0,a1
+
+	move.l	(sp)+,d0
+	rts
+
+.error:
+	lea	(file_error_message),a0
+	bsr.w	print_text
+	
+.halt   bra.s   .halt
+
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; close_file (d7: file handle)	
+close_file:
+	move.l	d0,-(sp)
+
+	; close
+	move.w	d7,-(sp)
+	move.w	#$3e,-(sp)
+	trap	#1
+	addq.l	#4,sp
+
+	move.l	(sp)+,d0
+	rts
+
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_show_welcome_message
 gsc_show_welcome_message:
+	move.l	a0,-(sp)
+
 	; white on blue
 	move.w  #$0812,$ffff8240.w
 	move.w  #$03cd,$ffff8246.w
@@ -360,19 +358,28 @@ gsc_show_welcome_message:
 	lea	(gsc_welcome_message),a0
 	bsr.w	print_text
 	
+	move.l	(sp)+,a0
 	rts
 	
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_load_track
 gsc_load_track:
-	lea	(gsc_track_message),a0
-	bsr.w	print_text
+	movem.l	a0/a1/d0/d7,-(sp)
+
+	.load_valid_track_lp:
+		lea	(gsc_track_message),a0
+		bsr.w	print_text
+		
+		bsr.w	read_text
+		bsr.w	alloc_read_file_beginning
+		tst.l	d0
+		beq.s	.load_valid_track_lp
 	
-	bsr.w	read_text
-	bsr.w	alloc_read_file
-	tst.l	d0
-	beq.s	gsc_load_track
-	
+	move.l	a0,gsc_file_ptr.w
+	move.l	a1,gsc_file_pos.w
+	move.l	d0,gsc_file_size.w
+	move.l	d7,gsc_file_handle.w
+
 	move.l	a0,a1
 
 	lea	(gsc_artist_message),a0
@@ -390,11 +397,43 @@ gsc_load_track:
 	lea	(gsc_play_message),a0
 	bsr.w	print_text
 	
-	move.l	a1,gsc_file_ptr.l
-	move.l	d0,gsc_file_size.l
-
+	movem.l	(sp)+,a0/a1/d0/d7
 	rts	
 
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; gsc_continue_load_track
+gsc_continue_load_track:
+	movem.l	a0/a1/d0/d7,-(sp)
+
+	move.l	gsc_file_size.w,d0
+	move.l	gsc_file_ptr.w,a0
+	adda.l	d0,a0
+
+	move.l	gsc_file_pos.w,a1
+
+	cmp.l	a0,a1
+	beq.s	.finished_loading
+	
+	.no_finished_loading:
+		move.l	gsc_file_handle.w,d7
+		bsr.w	continue_read_file
+		move.l	a1,gsc_file_pos.w
+
+		movem.l	(sp)+,a0/a1/d0/d7
+		rts
+
+	.finished_loading:
+		movem.l	(sp)+,a0/a1/d0/d7
+		rts
+
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; gsc_close_track
+gsc_close_track:
+	move.l	gsc_file_handle.w,d7
+	bsr.w	close_file
+	
+	rts
+	
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  MAIN  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 main:
@@ -436,37 +475,19 @@ main:
 	; main loop
 main_loop:
 
-	move.l	#$42381337,d0
-	moveq.l	#38,d3
-	.dummy_load_lp:
-		rept 	10
-			muls	d0,d0
-		endr
-		dbra.w	d3,.dummy_load_lp
-
-
-	; restore bg
-	move.w  #$0812,$ffff8240.w
-	
-	; wait vsync
-	lea		vbl_done.w,a0
-	bclr.b	#0,(a0)
-.wait_sync:
-	btst.b	#0,(a0)
-	beq.s 	.wait_sync 
-	
-	; debug bar
-	move.w  #$0070,$ffff8240.w
+	; continue loading GSC
+	bsr.w	gsc_continue_load_track
 	
 	bra.w	main_loop	
-	
+
+	; finish
+	bsr.w	gsc_finish
+	bsr.w	gsc_close_track
+
 .halt   bra.s   .halt
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  BSS  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	SECTION	BSS
-
-; screen:
-	; ds.b	screen_size_b
 
 mpb:
 	ds.b	12
