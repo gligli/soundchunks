@@ -18,7 +18,7 @@ gsc_mfp_prescaler_code	EQU	6
 gsc_timer_data		EQU	212
 
 gsc_timer_skew		EQU	3
-gsc_lmc_sample_skew	EQU	10
+gsc_lmc_sample_skew	EQU	20
 
 ; shouldn't be tweaked
 
@@ -100,47 +100,35 @@ gsc_timer_a_update_int:
 
 	movem.l	a0-a4/d0-d7,-(sp)
 
-	; sync only on second buffer (ie. half the time, good enough)
-	tst.w	gsc_dmasnd_phase.w
-	beq.s	.skew_end
-	.second_buffer_playing:
+	; sync timer on buffer start
 
-		moveq.l	#0,d0
-		move.l	d0,a0
-		move.l	#$00ffffff,d2
-		
-		lea	(gsc_audio_buf+gsc_audio_buf_size+gsc_lmc_sample_skew),a1
+	moveq.l	#0,d0
+	move.l	d0,a0
+	
+	lea	(gsc_audio_buf+gsc_lmc_sample_skew),a1
+	add.w	gsc_dmasnd_phase.w,a1
 
-		; wait any change on "Frame address counter", so that just after, nothing can change and we can read the entire value
+	; wait any change on "Frame address counter", so that just after, nothing can change and we can read the entire value
+	move.b	$ffff890d.w,d1
+	.wait_change_lp:
+		move.b	d1,d0	
 		move.b	$ffff890d.w,d1
-		.wait_change_lp:
-			move.b	d1,d0	
-			move.b	$ffff890d.w,d1
-			cmp.b	d1,d0
-			beq.s	.wait_change_lp
+		cmp.b	d1,d0
+		beq.s	.wait_change_lp
 
-		; already synced?
-		movep.l	$ffff8907(a0),d1
-		and.l	d2,d1
-		cmp.l	a1,d1
-		bhs.s	.skew_end
-		
-			; stop Timer A
-			move.b	#0,$fffffa19.w
-
-			; loop until we are synced on the sample we want
-			.skew_fix_lp:
-				movep.l	$ffff8907(a0),d1
-				and.l	d2,d1
-				cmp.l	a1,d1
-				blo.s	.skew_fix_lp
-
-			; continue Timer A
-			move.b	#gsc_mfp_prescaler_code,$fffffa19.w
-		
-	.skew_end:
+	; already synced?
+	movep.l	$ffff8907(a0),d1
+	andi.l	#$00ffffff,d1
+	sub.l	a1,d1
+	
+	; negative feedback loop on timer data from sample position
+	asr.b	#2,d1
+	move.b	#gsc_timer_skewed_data,d0
+	sub.b	d1,d0
+	move.b	d0,$fffffa1f.w
 
 	; send attenuation to LMC1992 thru Microwire (when this command takes effect in the LMC, we are synced with the buffer start)
+	
 	move.w	gsc_lmc_next_att.w,d0
 	bsr.w	gsc_microwire_write_wait
 	
