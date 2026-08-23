@@ -196,8 +196,6 @@ type
     TPsyADelta = record
       Linear, MuLaw: Double;
     end;
-  private
-    function GetThreadsPerFrame: Cardinal;
   public
     InputFN, OutputFN: String;
 
@@ -226,7 +224,6 @@ type
     FrameCount: Integer;
 
     GainFactor: Double;
-    FramesLeft: Integer;
 
     SrcHeader: array[$00..$2b] of Byte;
     SrcData: TSmallIntDynArray2;
@@ -262,8 +259,6 @@ type
     procedure MakeDstData;
 
     function ComputeEAQUAL(UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
-
-    property ThreadsPerFrame: Cardinal read GetThreadsPerFrame;
   end;
 
 
@@ -1024,15 +1019,12 @@ begin
       begin
         Yakmo := yakmo_create(clusterCount, 1, -1, 1, 0, 0, Ord(encoder.Verbose));
         try
-          yakmo_set_num_threads(encoder.ThreadsPerFrame);
+          yakmo_set_num_threads(1);
           yakmo_load_train_data(Yakmo, Length(Dataset), colCount, PPDouble(@Dataset[0]));
           yakmo_train_on_data(Yakmo, @Clusters[0]);
           yakmo_get_centroids(Yakmo, PPDouble(@Centroids[0]));
         finally
           yakmo_destroy(Yakmo);
-
-          InterLockedDecrement(encoder.FramesLeft);
-          yakmo_set_num_threads(encoder.ThreadsPerFrame);
         end;
       end;
     end
@@ -1256,8 +1248,6 @@ end;
 
 procedure TFrame.MakeFrame(AVerbose: Boolean);
 begin
-  Inc(encoder.FramesLeft);
-
   MakeChunks;
   ComputeAttenuations;
   if AVerbose then Write('.');
@@ -1687,7 +1677,7 @@ procedure TEncoder.MakeFrames;
 begin
   WriteLn('[MakeFrames]');
 
-  TMTPool.DoStandaloneLocalProc(@DoFrame, 0, FrameCount - 1, NumberOfProcessors);
+  TMTPool.DoStandaloneLocalProc(@DoFrame, 0, FrameCount - 1, Min(NumberOfProcessors, FrameCount));
   WriteLn;
 end;
 
@@ -1705,7 +1695,7 @@ begin
 {$ifdef ATARI_STE}
   ChunkSize := 6;
   ChunksPerFrame := 256;
-  ChunksPerAttenuation := 40;
+  ChunksPerAttenuation := 36;
   FrameLength := 1000.0 / 3; // in ms
   VariableFrameSizeRatio := 1.0;
   PiggyCodingBlocksBits := 1;
@@ -1749,11 +1739,6 @@ begin
         Inc(pos);
       end;
   end;
-end;
-
-function TEncoder.GetThreadsPerFrame: Cardinal;
-begin
-  Result := Max(1, iDivDef(NumberOfProcessors, FramesLeft, NumberOfProcessors));
 end;
 
 function TEncoder.CreateEmphasisFilter: TEmphasisFilter;
