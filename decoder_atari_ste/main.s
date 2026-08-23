@@ -437,14 +437,22 @@ gsc_close_track:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  MAIN  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 main:
+	; setup resolution (med res)
+	move.w	#1,-(sp)
+	move.l	#-1,-(sp)
+	move.l	#-1,-(sp)
+	move.w	#5,-(sp)
+	trap	#14
+	adda.l	#12,sp
+		
 	; clear screen
 	bsr.w	clear_screen
 
 	; welcome message
-	jsr	gsc_show_welcome_message
+	bsr.w	gsc_show_welcome_message
 
-	; load GSC
-	jsr	gsc_load_track	
+	; load ROM
+	bsr.w	gsc_load_track	
 
 	; disable irqs
 	move    #$2700,SR
@@ -503,7 +511,7 @@ print_data:
 	SECTION DATA
 
 gsc_welcome_message:
-	dc.b	13,10,"STeGSC, Atari STe SoundChunks replayer",13,10,"By GliGli, version 0.00a",13,10,13,10,0
+	dc.b	13,10,"STeGSC, Atari STe SoundChunks replayer",13,10,"By GliGli, version 0.01b",13,10,13,10,0
 
 gsc_track_message:
 	dc.b	"Please input GSC file name:",13,10,0
