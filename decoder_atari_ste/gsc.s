@@ -10,26 +10,24 @@
 gsc_volume_compensation	EQU	0	; eg. 6 = 12dB
 
 gsc_chunk_size		EQU	6
-gsc_chunks_per_att	EQU	40
+gsc_chunks_per_att	EQU	36
 
-gsc_mfp_prescaler_value	EQU	200	; /!\ keep both gsc_mfp_prescaler_* synced!
-gsc_mfp_prescaler_code	EQU	7
+gsc_mfp_prescaler_value	EQU	100	; /!\ keep both gsc_mfp_prescaler_* synced!
+gsc_mfp_prescaler_code	EQU	6
 
-gsc_timer_skew		EQU	1
+gsc_timer_data		EQU	212
+
+gsc_timer_skew		EQU	3
 gsc_lmc_sample_skew	EQU	10
 
 ; shouldn't be tweaked
-
-mfp_clock_rate		EQU	2457600
-gsc_sample_rate		EQU	25033
 
 gsc_header_size		EQU	80
 
 gsc_audio_buf_size	EQU	gsc_chunks_per_att*gsc_chunk_size
 gsc_audio_dblbuf_size	EQU	gsc_audio_buf_size*2
 
-gsc_timer_data_num	EQU	mfp_clock_rate/(gsc_sample_rate/gsc_chunk_size/gsc_chunks_per_att)
-gsc_timer_data		EQU	gsc_timer_data_num/gsc_mfp_prescaler_value-gsc_timer_skew
+gsc_timer_skewed_data	EQU	gsc_timer_data-gsc_timer_skew
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  VARIABLES  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -59,6 +57,9 @@ lo_buf_gsc_end		EQU	lo_buf_main_end
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_timer_a_init_int: bokeh isr to cleanly start the DMA Sound System
 gsc_timer_a_init_int:
+	; disable irqs while decoding
+	move    #$2700,SR
+
 	move.l	a0,-(sp)
 
 	; set ST-MFP-13 Vector (Timer A)
@@ -94,6 +95,9 @@ gsc_timer_a_init_int:
 	endm
 	
 gsc_timer_a_update_int:
+	; disable irqs while decoding
+	move    #$2700,SR
+
 	movem.l	a0-a4/d0-d7,-(sp)
 
 	; sync only on second buffer (ie. half the time, good enough)
@@ -103,26 +107,36 @@ gsc_timer_a_update_int:
 
 		moveq.l	#0,d0
 		move.l	d0,a0
+		move.l	#$00ffffff,d2
 		
 		lea	(gsc_audio_buf+gsc_audio_buf_size+gsc_lmc_sample_skew),a1
 
+		; wait any change on "Frame address counter", so that just after, nothing can change and we can read the entire value
+		move.b	$ffff890d.w,d1
+		.wait_change_lp:
+			move.b	d1,d0	
+			move.b	$ffff890d.w,d1
+			cmp.b	d1,d0
+			beq.s	.wait_change_lp
+
 		; already synced?
-		movep.l	$ffff8907(a2),d1
-		andi.l	#$00ffffff,d1
+		movep.l	$ffff8907(a0),d1
+		and.l	d2,d1
 		cmp.l	a1,d1
 		bhs.s	.skew_end
 		
-		; stop Timer A
-		move.b	d0,$fffffa19.w
+			; stop Timer A
+			move.b	#0,$fffffa19.w
 
-		; loop until we are synced on the sample we want
-		.skew_fix_lp:
-			movep.w	$ffff890b(a0),d1
-			cmp.w	a1,d1
-			bne.s	.skew_fix_lp
+			; loop until we are synced on the sample we want
+			.skew_fix_lp:
+				movep.l	$ffff8907(a0),d1
+				and.l	d2,d1
+				cmp.l	a1,d1
+				blo.s	.skew_fix_lp
 
-		; continue Timer A
-		move.b	#gsc_mfp_prescaler_code,$fffffa19.w
+			; continue Timer A
+			move.b	#gsc_mfp_prescaler_code,$fffffa19.w
 		
 	.skew_end:
 
@@ -262,15 +276,35 @@ gsc_timer_a_update_int:
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_microwire_write_wait: (d0: command)
 gsc_microwire_write_wait:
-	move.l	d1,-(sp)
+	movem.l	a0/d1,-(sp)
 
-	move.w	$ffff8922.w,d1
-	move.w	d0,$ffff8922.w
+	lea	$ffff8922.w,a0
+
+	move.w	(a0),d1
+	
+	; do it
+	
+	move.w	d0,(a0)
 	.wait:
-		cmp.w	$ffff8922.w,d1
+		cmp.w	(a0),d1
 		bne.s	.wait
 
-	move.l	(sp)+,d1
+	; ... then wait the same amount of time
+
+	rept	7
+		ori.b	#0,ccr
+	endr
+
+	; ... then do it again
+
+	move.w	d0,(a0)
+	.wait2:
+		cmp.w	(a0),d1
+		bne.s	.wait2
+
+	; ... profit! (it then works reliably on real hw =)
+
+	movem.l	(sp)+,a0/d1
 	rts
 	
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -409,7 +443,7 @@ gsc_init:
 	bclr.b	#5,$fffffa0f.w
 	bset.b	#5,$fffffa13.w
 	move.b	#$10+gsc_mfp_prescaler_code,$fffffa19.w
-	move.b	#gsc_timer_data,$fffffa1f.w
+	move.b	#gsc_timer_skewed_data,$fffffa1f.w
 
 	; set ST-MFP-13 Vector (Timer A)
 	move.l	$134.w,gsc_timer_a_int_save.w
