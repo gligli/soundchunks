@@ -9,31 +9,139 @@
         <Filename Value="solve_cpf_timer.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <CursorPos X="16" Y="25"/>
-        <UsageCount Value="22"/>
+        <EditorIndex Value="1"/>
+        <CursorPos X="18" Y="48"/>
+        <UsageCount Value="39"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\lazarus\fpc\3.2.2\source\rtl\objpas\fgl.pp"/>
+        <TopLine Value="135"/>
+        <CursorPos X="6" Y="162"/>
+        <UsageCount Value="14"/>
         <Loaded Value="True"/>
       </Unit>
     </Units>
-    <JumpHistory HistoryIndex="4">
+    <JumpHistory HistoryIndex="29">
       <Position>
         <Filename Value="solve_cpf_timer.lpr"/>
-        <Caret Line="6" Column="57"/>
+        <Caret Line="69" Column="8" TopLine="16"/>
       </Position>
       <Position>
         <Filename Value="solve_cpf_timer.lpr"/>
-        <Caret Line="3" Column="8"/>
+        <Caret Line="12" Column="85"/>
       </Position>
       <Position>
         <Filename Value="solve_cpf_timer.lpr"/>
-        <Caret Line="34" Column="10"/>
+        <Caret Line="34" Column="33" TopLine="8"/>
       </Position>
       <Position>
         <Filename Value="solve_cpf_timer.lpr"/>
-        <Caret Line="25" Column="24"/>
+        <Caret Line="85" Column="31" TopLine="52"/>
       </Position>
       <Position>
         <Filename Value="solve_cpf_timer.lpr"/>
-        <Caret Line="23" Column="67"/>
+        <Caret Line="111" Column="51" TopLine="70"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="110" Column="34" TopLine="64"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="114" TopLine="76"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="104" Column="17" TopLine="64"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="117" TopLine="67"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="110" Column="28" TopLine="64"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="103" TopLine="83"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="102" TopLine="83"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="104" TopLine="83"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="106" TopLine="83"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="111" Column="51" TopLine="73"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="101" TopLine="73"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="103" Column="51" TopLine="72"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="111" TopLine="72"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="101" Column="36" TopLine="66"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="120" TopLine="92"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="70" Column="27" TopLine="42"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="101" TopLine="64"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="111" Column="16" TopLine="75"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="98" Column="41" TopLine="70"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="70" Column="26" TopLine="40"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="97" Column="17" TopLine="70"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="51" Column="13" TopLine="16"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="49" Column="135" TopLine="10"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="47" TopLine="21"/>
+      </Position>
+      <Position>
+        <Filename Value="solve_cpf_timer.lpr"/>
+        <Caret Line="15"/>
       </Position>
     </JumpHistory>
     <RunParams>

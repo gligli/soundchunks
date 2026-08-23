@@ -1,37 +1,48 @@
 program solve_cpf_timer;
 uses
-  Math;
+  Math, Types, fgl, SysUtils, StrUtils;
 const
   CMFPFreq = 2457600.0;
-  CSoundFreq = 8010613.0;
+  CSoundFreq = 8010613.33333333333333333333;
   CSoundDiv = 320;
   CChunkSize = 6;
   CMFPDivs: array[0 .. 6] of Integer = (4, 10, 16, 50, 64, 100, 200);
+
 var
   iCPF, iMFPDiv, iMFPData: Integer;
   bestCPF, bestMFPDiv, bestMFPData: Integer;
-  best, v: Double;
+   mfpDataPer, bestV, bestW, v, w: Extended;
 begin
-  best := Infinity;
+  bestV := MaxSingle;
+  bestW := -MaxSingle;
   bestCPF := -1;
   bestMFPDiv := -1;
   bestMFPData := -1;
-  for iCPF := 24 to 84 do
+  for iCPF := 36 to 40 do
+  begin
+    v := iCPF * CSoundDiv * CChunkSize / CSoundFreq;
     for iMFPDiv := Low(CMFPDivs) to High(CMFPDivs) do
-      for iMFPData := 1 to 256 do
-      begin
-        v := 1.0 / (CSoundFreq / CSoundDiv / CChunkSize / iCPF) - 1.0 / (CMFPFreq / CMFPDivs[iMFPDiv] / iMFPData);
+    begin
+      mfpDataPer := CMFPDivs[iMFPDiv] / CMFPFreq;
 
-        if (v >= 0) and (Abs(v) < Abs(best)) then
+      for iMFPData := 1 to 255 do
+      begin
+        w := (iMFPData) * mfpDataPer;
+
+        if (w < v) and (Abs(v - w) < Abs(bestV - bestW)) then
         begin
-          best := v;
+          bestV := v;
+          bestW := w;
           bestCPF := iCPF;
           bestMFPDiv := CMFPDivs[iMFPDiv];
           bestMFPData := iMFPData;
         end;
       end;
-  writeln('best :', best*1e6:12:6, 'uS, bestCPF :', bestCPF:4, ', bestMFPDiv :', bestMFPDiv:4, ', bestMFPData :', bestMFPData:4);
-  writeln('sample buffer size :', CChunkSize * iCPF:8);
+    end;
+  end;
+  writeln('best:', (bestV - bestW)*1e6:12:9, 'uS, bestCPF:', bestCPF:4, ', bestMFPDiv:', bestMFPDiv:4, ', bestMFPData:', bestMFPData:4);
+  writeln('sample buffer size:', CChunkSize * bestCPF:8);
+
   ReadLn;
 end.
 
