@@ -1,0 +1,172 @@
+README-win32
+------------
+
+This file contains information specific to the Win32 version of SoX.
+Please refer to the README files for general information.
+
+sox_ng.exe -- main EXE of SOX
+
+wget.exe -- optional external program from "https://www.gnu.org/software/wget"
+            used to fetch input files from the internet
+	    instead of from local storage
+
+ffmpeg.exe -- optional external program from "ffmpeg.org" used to decode
+              dozens of audio (and video!) file formats not supported natively
+
+All were compiled using the M Cross Environment MXE
+See http://codeberg.org/sox_ng/sox_ng/wiki/Distro-MXE.md
+and http://mxe.cc
+
+The CMake files may or may not still work.
+
+sox_ng.txt/pdf -- manual for sox_ng
+soxi_ng.txt/pdf -- manual for soxi_ng or sox_ng --info
+soxformat_ng.txt/pdf -- list of supported file formats
+soxeffect_ng.txt/pdf -- list of effects
+
+SoX Helper Applications
+-----------------------
+
+SoX also includes support for SOXI_NG.EXE, PLAY_NG.EXE and REC_NG.EXE and
+their behaviors are documented in the included PDF's.  They have the same
+install restrictions as SOX_NG.EXE.
+
+SOXI_NG.EXE, PLAY_NG.EXE, and REC_NG.EXE are not distributed with this package
+to reduce size requirements. They are, in fact, only copies of the original
+SOX_NG.EXE binary which changes SOX_NG.EXE's behavior based on the
+executable's filename.
+
+If you wish to make use of these utils you can copy them or make
+symbolic links to them:
+
+    copy sox_ng.exe soxi_ng.exe
+    copy sox_ng.exe play_ng.exe
+    copy sox_ng.exe rec_ng.exe
+or
+    Powershell> new-item -ItemType SymbolicLink -Path .\play_ng.exe -Target .\sox_ng.exe
+    CMD.EXE> mklink /D play_ng.exe sox_ng.exe (cmd.exe)
+
+The play and record functionality can also be equated using the "-d" option
+with SOX_NG.EXE. soxi_ng functionality can be equated using the "--info" option.
+The rough syntax is:
+
+play_ng: sox_ng [input files and options] -d [effects]
+rec_ng:  sox_ng -d [output file and options] [effects]
+soxi_ng: sox_ng --info [input files and options]
+
+Building SoX_NG.EXE yourself
+----------------------------
+
+The sox_ng Windows executable is cross-compiled using MXE (http://mxe.cc)
+and it's dead easy.
+
+# Install the things it needs
+
+## On Debian/Ubuntu/Mint etc.
+
+sudo apt-get install \
+    autoconf automake autopoint bash bison bzip2 flex g++ g++-multilib \
+    gettext git gperf intltool libc6-dev-i386 libgdk-pixbuf2.0-dev \
+    libltdl-dev libgl-dev libpcre3-dev libssl-dev libtool-bin \
+    libxml-parser-perl lzip make openssl p7zip-full patch perl python3 \
+    python3-distutils python3-mako python3-packaging python3-pkg-resources \
+    python3-setuptools python-is-python3 ruby sed sqlite3 unzip wget xz-utils
+
+## For other Unix distros
+
+See https://mxe.cc#Requirements
+
+# Get a copy of MXE
+
+git clone https://github.com/mxe/mxe.git
+cd mxe
+
+# Fetch the configuration file for sox_ng
+wget -P src https://codeberg.org/sox_ng/sox_ng/releases/download/sox_ng-14.6.0.1/sox_ng.mk
+
+# Build it
+
+    make sox_ng
+
+The first time you run this, it will take 24 hours while it builds GCC
+and a load of other things; from then on it will take a few minutes.
+
+# Build the additional packages it can use
+
+    make wget ffmpeg
+
+# Make the distribution zip file
+
+    zip -j sox_ng-win32.zip usr/i686-w64-mingw32.static/bin/{sox_ng,wget,ffmpeg}.exe
+
+# win64 builds
+
+To compile the 64-bit version, use
+
+    make MXE_TARGETS=x86_64-w64-mingw32.static sox_ng
+
+and sox_ng.exe will appear in usr/x86_64-w64-mingw32.static/bin
+
+Acknowledgements
+----------------
+
+SOX_NG.EXE included in this package makes use of the following projects.
+
+  SoX - https://codeberg.org/sox_ng/sox_ng
+
+  FLAC - http://flac.sourceforge.net
+
+  FFMPEG - http://ffmpeg.org
+
+  FFTW - http://fftw.org
+
+  LADSPA - http://www.ladspa.org
+
+  libid3tag - http://www.underbit.com/products/mad
+
+  libsndfile - http://www.mega-nerd.com/libsndfile
+
+  Ogg Vorbis - http://www.vorbis.com
+
+  PNG - http://www.libpng.org/pub/png
+
+  speexdsp - https://github.com/xiph/speexdsp
+
+  WavPack - http://www.wavpack.com
+
+  wget - http://www.gnu.org/software/wget
+
+Enjoy,
+The SoX and SoX Development Teams
+
+Appendix - wget, curl and ffmpeg Support
+----------------------------------------
+
+The SoX Windows binary can make use of the wget or curl command line utility
+to load files over the internet or listen to shoutcast streams.
+A configure option --with-curl says to prefer curl over wget
+if both are available.
+
+It can also use the ffmpeg utility to read four dozen more audio (and video!)
+formats.
+
+Binary copies of wget and ffmpeg are available on the sox_ng Releases page.
+
+For SoX to make use of wget, curl or ffmpeg, they must be located either
+in your PATH or in the same directory that SoX is run from and
+custom configuration of wget can be made by editing the file wget.ini
+contained in the same directory as wget.exe.
+
+Appendix - MP3 and AMR-NB/AMR-WB Support
+----------------------------------------
+
+Now that the MP3 patents have expired and the opencore AMR libraries
+are free, SoX contains support for reading and writing these files.
+
+Appendix - LADSPA Plugins
+-------------------------
+
+SoX has built-in support for LADSPA Plugins; see http://www.ladspa.org
+
+SoX will search for these plugins based on the LADSPA_PATH
+environment variable.  See sox_ng.txt for further information.

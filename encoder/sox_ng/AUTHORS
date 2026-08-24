@@ -1,0 +1,90 @@
+SoX was written by Lance Norskog with significant contributions from
+
+	Chris Bagwell		cbagwell at users.sourceforge.net
+	Jimen Ching 		jiching at wiliki.eng.hawaii.edu
+	Reuben Thomas		rrt at sc3d.org
+	Rob Sykes		aquegg at yahoo.co.uk
+	Pascal Giard		evilynux at gmail.com
+	Doug Cook		idigdoug at gmail.com
+	Ulrich Klauer		uklauer at users.sourceforge.net
+	Eric Wong		normalperson at yhbt.net
+	Jan Stary		hans at stare.cz
+	M\303\244ns Rull\303\244rd		mans at mansr.com
+
+Note that mail to anyone@users.sourceforge.net no longer works.
+You have to log in and send a private message which is then
+forwarded to their email proper.
+
+sox_ng is currently maintained by
+
+	Martin Guy		martinwguy at gmail.com
+
+and the second keyholder to sox_ng is Reuben Thomas.
+
+List of earlier SoX Contributors
+--------------------------------
+Covering the time from its creation (Jul '91) until sox-11gamma (Feb '95):
+
+  o Lance Norskog		thinman at netcom.com
+	Creator & maintenance
+  o Guido Van Rossum		guido at cwi.nl
+	AU, AIFF, AUTO, HCOM, reverse, many bug fixes
+  o Jef Poskanzer		jef at well.sf.ca.us
+	original code for u-law and delay line
+  o Bill Neisius		bill%solaria at hac2arpa.hac.com 
+	DOS port, 8SVX, Sounder, Soundtool formats
+	Apollo fixes, stat with auto-picker
+  o Rick Richardson		rick at digibd.com
+	WAV and SB driver handlers, fixes
+  o David Champion		dgc3 at midway.uchicago.edu
+	Amiga port 
+  o Pace Willisson		pace at blitz.com
+	Fixes for ESIX
+  o Leigh Smith			leigh at psychok.dialix.oz.au
+	SMP and comment movement support.
+  o David Sanderson		dws at ssec.wisc.edu
+	AIX3.1 fixes
+  o Glenn Lewis			glewis at pcocd2.intel.com
+	AIFF chunking fixes
+  o Brian Campbell		brianc at quantum.qnx.com
+	QNX port and 16-bit fixes
+  o Chris Adams			gt8741 at prism.gatech.edu
+	DOS port fixes
+  o John Kohl			jtkohl at kolvir.elcr.ca.us
+	BSD386 port, VOC stereo support
+  o Ken Kubo			ken at hmcvax.claremont.edu
+	VMS port, VOC stereo support
+  o Frank Gadegast 		phade at cs.tu-berlin.de
+	Microsoft C 7.0 & C Borland 3.0 ports
+  o David Elliot		dce at scmc.sony.com
+	CD-R format support
+  o David Sears			dns at essnj3.essnjay.com
+	Linux support
+  o Tom Littlejohn		tlit at seq1.loc.gov
+	Raw textual data
+  o Boisy G. Pitre 		boisy at microware.com
+	OS9 port
+  o Sun Microsystems, Guido Van Rossum
+	CCITT G.711, G.721, G.723 implementation
+  o Graeme Gill			graeme at labtam.labtam.oz.au
+	A-LAW format, Good .WAV handling, avg channel expansion
+  o Allen Grider		grider at hfsi.hfsi.com
+	VOC stereo mode, WAV file handling
+  o Michel Fingerhut 		Michel.Fingerhut at ircam.fr
+	Upgrade 'sf' format to current IRCAM format.  Float file support.
+  o Chris Knight
+	Achimedes Acorn support
+  o Richard Caley 		R.Caley at ed.ac.uk
+	Psion WVE handler
+  o Lutz Vieweg			lkv at mania.RoBIN.de
+	MAUD (Amiga) file handler
+  o Tim Gardner			timg at tpi.com
+	Windows NT port for V7
+  o Jimen Ching 		jiching at wiliki.eng.hawaii.edu
+	Libst porting bugs
+  o Lauren Weinstein		lauren at vortex.com
+	DOS porting, scripts, professional use
+  o Juergen Mueller
+	The echo, echos, chorus and phaser effects
+
+and many other contributers.

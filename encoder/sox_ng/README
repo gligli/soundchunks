@@ -1,16 +1,16 @@
-			      SoX: Sound eXchange
-			      ===================
+			   SoX: Sound eXchange
+			   ===================
 
-SoX (Sound eXchange) is the Swiss Army knife of sound processing tools: it
-can convert sound files between many different file formats & audio devices,
+SoX (Sound eXchange) is another Swiss Army knife of sound processing tools:
+it can convert sound files between many different file formats & audio devices,
 and can apply many sound effects & transformations, as well as doing basic
 analysis and providing input to more capable analysis and plotting tools.
 
-SoX is licensed under the GNU GPL and GNU LGPL.  To be precise, the 'sox'
-and 'soxi' programs are distributed under the GPL, while the library
-'libsox' (in which most of SoX's functionality resides) is dual-licensed.
-Note that some optional components of libsox are GPL only: if you use these,
-you must use libsox under the GPL.  See INSTALL for the list of optional
+SoX is licensed under the GNU GPL and GNU LGPL.  To be precise, the 'sox_ng'
+and 'soxi_ng' programs are distributed under the GPL, while the library
+'libsox_ng' (in which most of SoX's functionality resides) is dual-licensed.
+Note that some optional components of libsox_ng are GPL only: if you use these,
+you must use libsox_ng under the GPL.  See INSTALL for the list of optional
 components and their licences.
 
 If this distribution is of source code (as opposed to pre-built binaries),
@@ -21,41 +21,35 @@ Changes between this release and previous releases of SoX can be found in
 the 'ChangeLog' file; a summary of the file formats and effects supported in
 this release can be found below.  Detailed documentation for using SoX can
 be found in the distributed 'man' pages:
-
-  o  sox(1)
-  o  soxi(1)
-  o  soxformat(7)
-  o  libsox(3)
+  o  sox_ng(1)
+  o  soxi_ng(1)
+  o  soxformat_ng(7)
+  o  libsox_ng(3)
 
 or in plain text or PDF files for those systems without man.
 
 The majority of SoX features and fixes are contributed by SoX users - thank
 you very much for making SoX a success!  There are several new features
-wanted for SoX, listed on the feature request tracker at the SoX project
-home-page:
+wanted for SoX, listed on the feature request tracker at the SoX
+project home-page:
 
-		    http://sourceforge.net/projects/sox
+		    https://codeberg.org/sox_ng/sox_ng/issues
 
 users are encouraged to implement them!
 
 Please submit bug reports, new feature requests, and patches to the relevant
 tracker at the above address, or by email:
 
-		   mailto:sox-devel@lists.sourceforge.net
-
-Also accessible via the project home-page is the SoX users' discussion
-mailing list which you can join to discuss all matters SoX with other SoX
-users; the mail address for this list is:
-
-		   mailto:sox-users@lists.sourceforge.net
+		   mailto:sox-ng@groups.io
 
 The current release handles the following audio file formats:
-
 
   o  Raw files in various binary formats
   o  Raw textual data
   o  Amiga 8svx files
+  o  AMR-WB & AMR-NB (with optional libamrwb & libamrnb libraries)
   o  Apple/SGI AIFF files
+    o  PCM, sowt, A-law, u-law
   o  SUN .au files
     o  PCM, u-law, A-law
     o  G7xx ADPCM files (read only)
@@ -64,37 +58,81 @@ The current release handles the following audio file formats:
   o  AVR files
   o  CDDA (Compact Disc Digital Audio format)
   o  CVS and VMS files (continuous variable slope)
+  o  DSD, DSF, DSDIFF and WSD files
   o  Grandstream ring-tone files
   o  GSM files
+  o  Macintosh HCOM files
   o  HTK files
   o  LPC-10 files
-  o  Macintosh HCOM files
   o  Amiga MAUD files
-  o  AMR-WB & AMR-NB (with optional libamrwb & libamrnb libraries)
   o  MP2/MP3 (with optional libmad, libtwolame and libmp3lame libraries)
   o  Opus files (read only; with optional Opus libraries)
-
   o  Ogg Vorbis files (with optional Ogg Vorbis libraries)
   o  FLAC files (with optional libFLAC)
   o  IRCAM SoundFile files
   o  NIST SPHERE files
-  o  Turtle beach SampleVision files
-  o  Sounder & Soundtool (DOS) files
-  o  Yamaha TX-16W sampler files
+  o  CSL NSP audio/bioelectric files
+  o  SDS format
   o  SoundBlaster .VOC files
-  o  Dialogic/OKI ADPCM files (.VOX)
+  o  Sounder & Soundtool (DOS) files
+  o  Turtle beach SampleVision files
+  o  Dialogic/OKI ADPCM .VOX files
   o  Microsoft .WAV files
     o  PCM, floating point
     o  u-law, A-law, MS ADPCM, IMA (DMI) ADPCM
     o  GSM
     o  RIFX (big endian)
   o  WavPack files (with optional libwavpack library)
+  o  Yamaha TX-16W sampler files
+  o  Akai MSP2K sampler files
   o  Psion (palmtop) A-law WVE files and Record voice notes
   o  Maxis XA Audio files
     o  EA ADPCM (read support only, for now)
-  o  Pseudo formats that allow direct playing/recording from most audio devices
+  o  Pseudo formats that allow direct playing/recording from audio devices
   o  The "null" pseudo-file that reads and writes from/to nowhere
 
+and if the `ffmpeg' program is installed it automatically reads:
+
+  o  3GP/3GPP files
+  o  Audible Audiobook files
+  o  AAC Advanced Audio Coding files
+  o  AC3 Dolby Digital files
+  o  ACT files (G729A speech compression)
+  o  CRI ADX files
+  o  Advanced / Active Streaming Format ASF files
+  o  APTX Audio Processing Technology for Bluetooth files
+  o  Argonaut Games ASF files
+  o  AST Audio stream files
+  o  AVI Audio Video Interleaved files
+  o  DFPWM1a files
+  o  DTS Digital Theatre System files
+  o  Electronic Arts Multimedia files
+  o  Enhanced AC-3 Audio files
+  o  GXF General eXchange Format files
+  o  Lego Mindstorms RSO files
+  o  LOAS AudioSyncStream files
+  o  Loki SDL MJPEG files
+  o  M4A MPEG-4 Audio files
+  o  M4V/MP4 MPEG-4 Video files
+  o  Macromedia Flash Video files
+  o  Meridian Lossless Packing
+  o  Monkey's Audio (APE) files
+  o  MPEG-1 Program Stream files
+  o  MPEG-2 Transport Stream files
+  o  NUT audio files
+  o  Ogg Speex files
+  o  Ogg FLAC files
+  o  RealAudio files
+  o  RealMedia files
+  o  SBC files
+  o  Simon & Schuster Interactive KVAG files
+  o  Sony PS2 VAG files
+  o  S/PDIF (IEC 61937) files
+  o  True Audio TTA files
+  o  Unisoft Rayman 2 APM files
+  o  Westwood Studios Audio files
+  o  Windows Media Audio files
+  o  Windows Television files
 
 The audio effects/tools included in this release are as follows:
 
@@ -104,12 +142,14 @@ The audio effects/tools included in this release are as follows:
     o  bandreject: RBJ band-reject biquad IIR filter
     o  band: SPKit resonator band-pass IIR filter
     o  bass: Tone control: RBJ shelving biquad IIR filter
+    o  dolbyb: Noise reduction encoding and decoding
     o  equalizer: RBJ peaking equalisation biquad IIR filter
-    o  firfit+: FFT convolution FIR filter using given freq. response (W.I.P.)
+    o  firfit: FFT convolution FIR filter using given freq. response (W.I.P.)
     o  highpass: High-pass filter: Single pole or RBJ biquad IIR
     o  hilbert: Hilbert transform filter (90 degrees phase shift)
     o  lowpass: Low-pass filter: single pole or RBJ biquad IIR
     o  sinc: Sinc-windowed low/high-pass/band-pass/reject FIR
+    o  speexdsp: Automatic gain control, denoise and dereverb
     o  treble: Tone control: RBJ shelving biquad IIR filter
 
   o  Production effects
@@ -123,6 +163,7 @@ The audio effects/tools included in this release are as follows:
     o  repeat: Loop the audio a number of times
     o  reverb: Add reverberation
     o  reverse: Reverse the audio (to search for Satanic messages ;-)
+    o  saturation: Soft clipping effects from subtle warmth to crunchy fuzz
     o  tremolo: Sinusoidal volume modulation
 
   o  Volume/level effects
@@ -134,6 +175,7 @@ The audio effects/tools included in this release are as follows:
     o  loudness: Gain control with ISO 226 loudness compensation
     o  mcompand: Multi-band compression/expansion/limiting
     o  norm: Normalise to 0dB (or other)
+    o  softvol: A software volume control that avoids clipping and maybe rises
     o  vol: Adjust audio volume
 
   o  Editing effects
@@ -145,7 +187,6 @@ The audio effects/tools included in this release are as follows:
 
   o  Mixing effects
     o  channels: Auto mix or duplicate to change number of channels
-    o  divide+: Divide sample values by those in the 1st channel (W.I.P.)
     o  remix: Produce arbitrarily mixed output channels
     o  swap: Swap pairs of channels
 
@@ -161,11 +202,14 @@ The audio effects/tools included in this release are as follows:
     o  rate: Change audio sampling rate
 
   o  Specialised filters/mixers
+    o  centercut: A "vocal cut" filter giving left, right and center separately
     o  deemph: ISO 908 CD de-emphasis (shelving) IIR filter
+    o  dop: DSD over PCM, packing 1-bit samples into 24-bit ones
     o  earwax: Process CD audio to best effect for headphone use
     o  noisered: Filter out noise from the audio
     o  oops: Out Of Phase Stereo (or `Karaoke') effect
     o  riaa: RIAA vinyl playback equalisation
+    o  sdm: Sigma-Delta Modulation for Direct Stream Digital format
 
   o  Analysis `effects'
     o  noiseprof: Produce a DFT profile of the audio (use with noisered)
@@ -176,6 +220,8 @@ The audio effects/tools included in this release are as follows:
   o  Miscellaneous effects
     o  ladspa: Apply LADSPA plug-in effects e.g. CMT (Computer Music Toolkit)
     o  synth: Synthesise/modulate audio tones or noise signals
+
+  o  Pseudo effects
     o  newfile: Create a new output file when an effects chain ends.
     o  restart: Restart 1st effects chain when multiple chains exist.
 
@@ -185,12 +231,12 @@ The audio effects/tools included in this release are as follows:
     o  fir: FFT convolution FIR filter using externally provided coefficients
     o  upsample: Increase sample rate by zero stuffing
 
-  + Experimental or incomplete effect; may change in future.
-
 Multiple audio files can be combined (and then further processed with
 effects) using any one of the following combiner methods:
 
   o  concatenate
-  o  mix
   o  merge: E.g. two mono files to one stereo file
+  o  mix
+  o  mix-power: Mix to equal power
+  o  multiply
   o  sequence: For playing multiple audio files/streams

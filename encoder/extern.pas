@@ -678,9 +678,9 @@ begin
   Process := TProcess.Create(nil);
 
   Process.CurrentDirectory := ExtractFilePath(ParamStr(0));
-  Process.Executable := 'sox\sox.exe';
+  Process.Executable := 'sox_ng\sox_ng.exe';
 
-  Params := '';
+  Params := '--no-dither ';
   Params += '"' + AFNIn + '" ';
   if ForceMono then
     Params += '-c 1 ';

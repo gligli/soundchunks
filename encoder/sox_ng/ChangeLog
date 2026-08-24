@@ -2,9 +2,474 @@ Change History
 --------------
 
 This file contains a list of all changes starting after the release of
-sox-11gamma, followed by a list of prior authors and features.
+sox-11gamma.
 
-$ox-14.4.2	2015-02-22
+
+sox_ng-14.8.0.1	2026-05-26
+---------------
+
+Changes since 14.8.0:
+
+  o Fix builds without FFTW giving all-black spectrograms, broken in 14.8.0
+  o Trivial fixes to the docs
+
+
+sox_ng-14.8.0	2026-05-18
+-------------
+
+The fourth new-feature release
+
+Changes since 14.7.0:
+
+New features:
+
+Effects:
+
+  o New effect "centercut", a sophisticated version of "oops"
+  o bend: Raise maximum FFT size from 8192 to 2^30
+  o bend: Optimized to run twice as fast
+  o echo/echos: Get the output signal length right
+  o fade: Add "s" square-law fade type
+  o rate: Extrapolate by Linear Predictive Coding to improve end effects
+  o hilbert/sinc: Raise maximum number of taps to 1073741823
+  o spectrogram: Add -i option to interpolate between frequency bins
+  o spectrogram: Fix linear axis with frequency ranges
+  o spectrogram: On log axis, add labels at 2 and 5 or 1 to 9
+  o spectrogram: Slightly faster by doing out-of-place FFTs
+  o spectrogram: Fail if the start time is beyond the end
+  o spectrogram: Add -g flag to show times as HH:MM:SS
+  o spectrogram: Warn about non-optimal DFT sizes and suggest the nearest one
+  o synth: Add -p for Pythagorean tuning
+
+Formats:
+
+  o New format ".hip" for libmp3lame's built-in MPEG decoder
+  o New format ".mod" for Amiga modules
+  o New format ".mul" for TombRaider Multiplex Streams (write-only)
+  o New format ".pcm" for SNES add-on MSU-1
+  o Add ffmpeg's "aa", "ea" and "act" formats
+  o aifc: Support 24/32-bit big/little-endian compression types
+  o cdda: Add ".cda" as a synonym for ".cdda"
+  o coreaudio: Allow selection of devices by number as well as by name
+  o dff/dsf: Automatically resample to supported sample rates when writing
+  o dff/dsf/wsd: Autodetect the formats when reading from stdin
+  o Add sndfile's names mpc and svx for formats mpc2k and 8svx
+  o pulseaudio: Filename can also set server and application name (app:foo)
+  o sndfile: Also handle AVR format
+  o wavpack: Update to WavPack 5.0 giving 64-bit file lengths
+
+Improvements:
+
+  o bend: Optimized to be over twice as fast
+  o If libmad is not available, use sndfile for MP3; if no sndfile, use hip
+  o Add global option -A to tune A4 to something other than 440Hz
+  o Add global option --keymap letting key presses adjust effect parameters
+  o --interactive: [<] and [>] seek by 30s and [R] restarts the effects chain
+  o In interactive mode, [n] skips and [q] and [esc] quit
+  o New demo miniprograms demo/soxcopy and demo/synth
+
+Bug fixes:
+
+  o avr: Fail when writing an unsupported number of channels
+  o echo/echos: Set the output signal's length
+  o ladspa: Allow plugins that take no input
+  o libsox: Warn and fail if they read an output or write an input file
+  o mad: Catch and report decoder error messages
+  o ogg: Detect disk-full when writing and stop
+  o pitch: Error about a bad cents value instead of tempo about a bad factor
+  o pulseaudio: Ignore zero-length writes, which it supposedly doesn't like
+  o rate: Bug fixes to the extrapolator
+  o rate: Fix "-vs" looping forever, broken in +git20260129
+  o softvol: Fix bug whereby rising volume suddenly dropped to zero
+  o soxi: Don't include the file header in the Bitrate figure
+  o spectrogram: Fix labelling of linear axes with a frequency range
+  o spectrogram: Omit bottom labels that overlap the top ones below
+  o spectrogram: Place top label on the top row of the graph, not the axis
+  o spectrogram: Improve labelling of logarithmic axes
+  o spectrogram: If start time is after EOF, fail instead of looping forever
+  o spectrogram: Obtain slightly faster FFTs from FFTW by doing them in-place
+  o spectrogram: Truncate the spectrogram less than before, still not right
+  o stats: Don't report the crest factor in overall JSON stats
+  o stats: Fix RMS Pk db of -inf when window time is equal to file length
+  o wav: Disallow zero-sized chunks
+  o wav: Ignore truncated final ISFT/ICRD chunks instead of failing
+  o wavpack: Fix the check for successfully rewriting the file header
+  o Don't open files in reverse order, so the first unopenable file is reported
+  o Make --keymap work on vol.gain and overdrive.gain when gain is 1
+  o For formats that only support mono, stereo or quad, convert to the closest
+    instead of writing 8-channel files that say "stereo" in the header
+  o Make file rewinding work when compiled with Emscripten
+  o Fail autodetection of some ffmpeg formats if the file is truncated
+  o Release input and output formats' hold on stdin and stdout so that
+    they can be used more than once
+  o sox_open_memstream_write(): Work for formats that rewrite the header
+  o Revert c557165 to make --single-threaded the default again
+  o Include opus support in the Windows exes
+  o Portability fixes for C89/C90
+  o Fix compilation on older MacOS X systems and with MS Visual C
+  o Make configure work on OpenBSD without needing --without-sunaudio
+  o Make --keymap work on vol.gain and overdrive.gain when gain is 1.0
+  o --multi-threaded: Set OMP_WAIT_POLICY so parallel SoXen are not slow
+  o Enable the test for CVE-2018-8357
+  o sox_effect_handler_t: Put new fields after priv_size for backward-compat
+  o Fix some core dumps, assertion failures, double frees and memory leaks
+
+Documentation:
+
+  o libsox_ng.3 is completely rewritten to be accurate and complete
+  o The effects descriptions have moved from sox_ng.1 to soxeffect_ng.7
+  o New manual pages libsoxeffect_ng and libsoxformat_ng on writing handlers
+  o Include the PDFs in the distribution tarballs
+  o cdda: Add a note about big-/little-endian files
+  o pulseaudio: Document that it uses its filename as a device name
+  o Make "sox -h foo" give the help for format or effect "foo"
+
+Internal:
+
+  o Source file mp3.c has split into mp3-mad.c, mp3-lame.c and mp3-twolame.c
+    and mp3-util.h has gone
+  o Fix opusfile detection in the Windows build
+  o Fix compilation with only some of mad, lame and twolame
+  o Completely rewrite the CMake build support
+  o Optimize the Windows exes for speed
+  o Remove debian/ again, as they do their own packaging
+  o Add lsx_popen() that uses execvp() instead of /bin/sh
+  o Make sox_open_memstream_write() get the buffer length right
+
+Thanks to akwizgran, Alfred Wingate, Case@hydrogenaudio, Daniel Adamski,
+Benedetto "dettox", Dave Jones, Doug Lee, Jan Stary, jwdevel, Mans Rullgard,
+prof-spock, qwertymode, Robert Schultz, Sebastian Ramacher, Stefan Sauer
+and others for creative input.
+
+
+sox_ng-14.7.0	2025-11-18
+-------------
+
+New features:
+
+Effects:
+
+  o chorus: Make all parameters optional
+  o chorus: Allow an initial -[s|t] to change the default wave shape
+  o chorus, phaser: Add -l/q options for linear/quadratic interpolation
+  o chorus: Get the initial phase of the offset wave right
+  o chorus: Make the frequency of the offset wave more precise
+  o dither: Add the new shibata filters from SSRC
+  o flanger: Add -n option for no interpolation
+  o flanger: Allow an initial -[s|t] to set the wave shape
+  o flanger: Allow delay+depth=0
+  o saturation: New effect for soft clipping from subtle warmth to crunchy fuzz
+  o sinc: Add -d flag to copy through when the lowpass frequency is
+    above the Nyquist frequency
+  o spectogram: Make -Y give exactly the requested height
+  o stat: Add -e flag to output EBU R 128 loudness measurements
+  o stat: Add -j flag to output in JSON format
+  o stretch: Add sqrt, quarter-cos and half-cos fading types
+
+Formats:
+
+  o mp3: Recognize mp1 and mp2 as separate formats
+  o mp2 encoding: Enable VBR encoding with -C -10-10
+  o mp2 encoding: Upsample rates lower than 16k instead of failing
+  o mp2/mp3: Mix 3 or more channels down to stereo instead of failing
+  o wav: Decode the names of unsupported formats instead of spouting hex codes
+
+Bug fixes:
+
+  o chorus: Fetch delayed samples from the past, not the future (!)
+  o chorus: Fix several more inaccuracies
+  o flanger: Fix range of width from -100-100 to 0-inf
+  o phaser: Fix range of regen to -1 to +1
+  o stretch: Fix infinite loop by imposing minimum window size of 1ms
+  o mp3: Make --help-format report write encodings
+  o Make --enable-dl-sndfile and --enable-dl-amrnb work
+  o Fix segfault on a mis-spelled effect name after :
+  o Fix play -t ao, broken in 14.6.1
+  o audioio (Sun audio): Fix compilation and segfault on NetBSD
+  o Fix --version only saying "SoX_ng v" on MacOS
+
+Documentation:
+
+  o Reject trailing garbage on numeric arguments
+  o Make messages for syntax errors more helpful
+  o rate: Document undocumented options
+  o Redraw flanger's flow diagram to be more similar to chorus/phaser
+  o Make --version include -rc1 or other extensions
+  o Largely rewrite the manual section for mp1/mp2/mp3.
+
+Internal:
+
+  o Allow ./configure --without-dolbyb
+  o Fix ./configure --with-dyn-default for amr, lame, mad, twolame and sndfile
+  o Add ./configure --enable-dl-speexdsp
+  o Recognize ffmpeg/lame/madplay's codes for unspecified WAV lengths
+  o Update to libdolbyb-1.1
+  o Fix issues/issues.sh for http:// remotes and on FreeBSD
+  o Add automatic "make win32.exe/win64.exe" rules using MXE
+  o Fix build failure if {mad,lame,twolame}.h is found but not the library
+  o Make test/twx-wav-byte-rate not fail on 64-bit machines
+  o Make CMake work again, though it omits all the optional formats
+  o Remove unmaintained msvc files
+  o debian/ is back to build .deb packages on Debian, Ubuntu and Mint
+    with dpkg-buildpackage -rfakeroot -b
+
+sox_ng-14.6.1   2025-10-13
+-------------
+
+Bug fixes:
+
+Effects:
+
+  o flanger: Fix minumum and maximum values of "width" (the mix)
+  o noisered: Fix asymmetric drain
+  o pulseaudio: Initialize the channel map
+  o spectrogram: Don't put a "DC" label on the log frequency axis
+  o spectrogram: Fix position of "Frequency (Hz)" on logarithmic axis
+  o spectrogram: Fix errors in the logarithmic axis and frequency range code
+  o spectrogram: Fix segmentation fault when using -n
+  o spectrogram: Fix segmentation fault when -y < 70
+  o speexdsp: Fix maximum and minimum values of -agc and -denoise
+
+File formats:
+
+  o Make reading MP2/3 and Ogg files work with -t sndfile
+  o Make writing MP3 files work with -t sndfile
+  o When writing WAV files >4GB, set the size to "unspecified"
+  o Correct WAV's byte rate for TXW's 33333.333Hz sample rate
+  o Detect and report the unsupported Sonarc-in-WAV format
+  o Fix reading of zero-length AIFF files
+  o Fix reading of AMR files with invalid block types
+  o Fix OKI ADPCM compression and decompression to respect the standard
+  o Make the GSRT padding byte for odd numbers of samples silent
+  o Fix ogg output (broken in 14.6.0, fixed in 14.6.0.4)
+  o Reject negative sample rates
+
+Internal improvements:
+
+  o Create sparse audio files when the data is zeroes
+  o Make the status display adapt to the terminal width
+  o Use sigaction() so that SoX is stoppable even when blocked by I/O
+  o Give LADSPA_PATH a sensible system default
+  o Fix OSS drivers that treat mono output as stereo
+  o Fix an input buffer overrun with OSS audio device
+  o Fix various floating point exceptions and segmentations faults
+  o Make dynamic loading of file format handlers work
+  o Fix symlink creation with --enable-replace
+  o Always support aligned heap allocation (for the sdm effect on AVX CPUs)
+  o Fix setting of -fstack-protector for GCCs that don't have it
+  o Fix compilation with versions of libsndfile that don't have MPEG
+  o Fix compilation on AIX 7.3, MSYS2/MinGW, Sortix and on MacOS X with old SDKs
+  o Make it compile with C89 compilers
+  o Avoid slowdown of overdrive due to denormalized floating point values
+
+Operating System specific:
+
+  o On Windows you no longer need to "set AUDIODRIVER=waveaudio" beforehand
+  o On Windows delete temporary files and output files with write errors
+  o Haiku: fix compilation and add system LADSPA plugin directories
+  o Update issues.sh to work on FreeBSD
+
+Documentation:
+
+  o Spell-check and revise the manuals, fix some usage messages
+  o Map \f(CW to \fR for nroff
+  o echos: Correct the gain_out hint
+  o All effects now have extra usage
+
+
+sox_ng-14.6.0	2025-06-17
+-------------
+
+New features:
+
+  o Read NSP format files
+  o Read MSP2K (Akai sampler) format files
+  o Read and write AIFC a-law and u-law encodings
+  o Copy AIFF's MARK and INST chunks more often
+  o Copy AIFC's MARK and INST chunks
+  o Read and write DSF format and read DFF and WSD formats
+  o Add the DSD-related "dop" and "sdm" effects
+  o Add reading of Ogg FLAC files (with ffmpeg)
+  o SDS format is now autodetected
+  o MP3 with CRC protection and MP2 formats are now autodetected
+  o AIFF format now supports ID3 tags
+  o The ID3 "TCOM" (Composer) tag is now supported
+  o Add "softvol" effect, a software gain that avoids clipping and maybe rises
+  o Make the 'v' and 'V' keys prefer to adjust softvol if it is active
+  o Add "dolbyb" effect to decode and encode Dolby B noise reduction
+  o synth: Add "vdelay" combine method to phase-modulate by the synth wave
+  o Remove the limit on the number of echo/echos stages (was 7)
+  o Remove the limit on the number of channels that phaser can handle (was 4)
+  o Raise the limit on the number of chorus stages from 7 to 256
+  o Remove unnecessary limits on arguments to echo,echos,chorus,phaser,flanger
+  o wget, wget2 and curl are sought at runtime instead of at build time and
+    ./configure --with-curl now just makes it prefer curl to wget.
+  o Make "echos" run 20% faster
+  o Make --multi-threaded the default
+  o Error messages have been harmonized. The best was
+    sox_ng WARN chorus: chorus: warning >>> gain-out can cause saturation
+  o When curl or wget fail to fetch a URL, decode the exit status to a message
+  o Don't spew the usage pages when there are invalid options
+  o Add flow diagrams to --help-effect chorus/compand/earwax/echo/echos/phaser
+  o Make --with-ffmpeg the default configuration
+
+Bug fixes:
+
+  o The "stats" effect's Bit-depth values have been revised to reflect
+    what Bit-depth means and handle corner cases like -32768
+  o Revise all effects' usage messages to the same format and more helpful
+  o "echos" and "chorus" have never worked but now do what they say
+  o "bend"'s logarithmic frequency curve is more closely logarithmic
+  o Fix "silence" not to add a random selection of fragments at the end
+  o Make "firfit" understand frequencies like "10k"
+  o Read mono 8-bit MAUD files with an odd number of samples
+  o Handle unknown odd-sized chunks in AIFF files
+  o Detect and report read errors from short audio files
+  o Detect and report write errors to audio files
+  o When data read from a pipe is short, report stats for what there was
+  o When an fatal error is detected, stop and exit non-zero in all cases
+  o No formats or effects are experimental or deprecated any more
+  o Multi-channel LADSPA plugins now work
+  o The LD_LIBRARY_PATH change has been reverted (it bombed on Solaris)
+  o Revert the "Unicode when writing id3 tags" patch which never worked
+  o ffmpeg's ADX format is no longer autodetected (too many false positives)
+  o Reject parameter values of NaN instead of dumping core
+  o Correct the manual and make its mcompand example work
+
+sox_ng-14.5.0.3	2025-01-05
+---------------
+
+Bug fixes:
+
+  o Make reading from ffmpeg work on Unix too.
+    popen(rb) returns NULL with glibc (!)
+
+sox_ng-14.5.0.2	2024-12-23
+---------------
+
+Bug fixes:
+
+  o Make reading from ffmpeg work by popen()ing "rb"
+
+sox_ng-14.5.0.1	2024-12-23
+---------------
+
+New features:
+
+  o Add Unicode support on Windows for filenames and command-line arguments
+
+Bug fixes:
+
+  o Make it build for Windows using MXE
+
+sox_ng-14.5.0	2024-12-06
+-------------
+
+New features:
+
+  o Add effect speexdsp with automatic gain control and noise reduction
+  o Auto-detect MP3 files
+  o If ./configured --with-ffmpeg and ffmpeg is installed, autoread formats:
+    3g2, 3gp, aac, ac3, adts, adx, ape, apm, aptx, argo_asf, asf, ast, avi,
+    dfpwm, dts, dvd, eac3, f4v, flv, gxf, ism, kvag, m4a, m4v, mkv, mlp,
+    mp4, mpeg, mpegts, mxf, nut, oga (Ogg with FLAC data), ra, rm, rso, sbc,
+    smjpeg, spdif, speex, svcd, tta, vag, vcd, vob, webm, wma, wsaud, wtv
+    and yet more with -t ffmpeg
+  o Add "stat -a" to give the average power spectrum
+  o Add "spectrogram -n" flag to normalize its brightness
+  o Add "spectrogram -L" flag to give a logarithmic frequency axis
+  o Add "spectrogram -R" flag to specify the frequency range
+  o Raise spectrogram's height limit from 8193 to 200000 pixels
+  o Lower the minimum speed of the flanger effect from 0.1 to 0.01 Hz
+  o Make combine effects work when there's a single file
+  o riaa: Add 192kHz sample rate
+  o sphere format: Support ALAW encoding
+  o SD2 format: Support resource forks
+  o ID3 tags: Support unicode when writing
+  o WAV files: Read when the number of valid bits is less that the sample size
+  o Use posix_fadvise to increase readahead and double its speed
+  o Use FFTW to make non-2^n-size spectrograms a hundred times faster
+  o Resize Linux pipe buffers to make multi-threaded effects 10-80% faster
+  o Reduce sox -t pulseaudio --[input-]buffer latency from up to 2 secs to low
+  o Enable building to fetch URLs with curl instead of wget
+  o Be able to read files that are still being written by another process
+  o Make "make check" run the regression test suite
+  o Drop sox_version_info_t's "time" element to get reproducible builds
+  o Remove the undocumented and useless "divide" effect
+  o Enhance ./configure --enable-stack-protector with =strong and =all and,
+    with no --(en|dis)able-stack-protector option, pick the best available
+
+Bug fixes:
+
+  o Fix coreaudio device name truncation on MacOS X
+  o Make it compile on Haiku and NetBSD and with gcc-2.95
+  o Americanize spelling in the manual
+  o Make "make installcheck" work again
+  o Fix the delay buffer full flag assigned during drain
+  o ./configure --with-{amrnb,amrwb,sndfile}=dyn --without-dyn-default
+    linked them statically instead
+  o Drop the unreliable pipe-rewinding libc hacks and do it in-house
+  o Fix bug introduced in sox_ng-14.4.3: au files with -t ao play short
+  o Fix segfault when --norm is passed with no parameter
+  o Fix compilation on AIX 7.1, Haiku, NetBSD, OpenBSD and with gcc-2.95
+
+sox_ng-14.4.3.1	2024-09-14
+---------------
+
+New features:
+
+  o Document the "sinc -r" flag
+  o Added releases.json for freshcode.club's benefit
+
+Bug fixes:
+
+  o Fix detection of opus. The AIX "fix" in 14.4.3-rc1 broke it elsewhere
+  o Don't call sox_write from output effect if input buffer is empty
+  o Correct the mailing list's address
+
+
+sox_ng-14.4.3	2024-09-01
+-------------
+
+New features:
+
+  o There is a new regression test suite, primarily against the CVEs
+
+Bug fixes:
+
+  o For CVE-2017-11332, CVE-2017-11333, CVE-2017-11358, CVE-2017-11359,
+    CVE-2017-15370, CVE-2017-15371, CVE-2017-15372, CVE-2017-15642,
+    CVE-2017-18189, CVE-2019-1010004, CVE-2019-13590, CVE-2019-8354,
+    CVE-2019-8355, CVE-2019-8356, CVE-2019-8357, CVE-2021-23159,
+    CVE-2021-23172, CVE-2021-23210, CVE-2021-33844, CVE-2021-3643,
+    CVE-2021-40426, CVE-2022-31650, CVE-2022-31651, CVE-2023-26590,
+    CVE-2023-32627, CVE-2023-34318, CVE-2023-34432,
+  o spectrogram segfault when width exceeds number of samples
+  o segmentation fault in rate.c
+  o floating point exception in startwrite()
+  o wavpack check errors
+  o writing hcom files on bigendian systems
+  o Fixes for memory leaks and a double free()s
+  o It now compiles under C99 and on AIX
+  o Support for uClibc and builds with other non-glibc C libraries
+  o Various build system fixes from the software distributions
+  o Spelling errors are fixed
+  o It now builds on AIX, FreeBSD, OpenBSD and Solaris
+  o Almost all compiler warnings are fixed
+
+Copyright:
+
+  o Uncopyrighted files have been attributed
+  o Copyrighted files with no license now have licences
+  o Multiple copyright notices in single files have been harmonized
+  o The lpc10 module was of dubious copyright and is now 3-clause BSD
+  o The libgsm module was missing its copyright notice
+  o There was an erroneous address for the FSF
+  o The copyright of opus.c is GPLv2-only because it's based on oggenc.c
+  o Therefore the overall copyright of sox_ng and libsox_ng is GPLv2
+
+
+sox-14.4.2	2015-02-22
 ----------
 
 Previously deprecated features that have been removed in this release:
@@ -972,7 +1437,7 @@ sox-12.18.1	2006-05-07
 
   o The "filter" effect could go into infinite drain mode.  Now
     only drain 1 buffer.  noisered as well.
-  o SoX was ignoring user aborts (ctrl-c) if it occured during
+  o SoX was ignoring user aborts (ctrl-c) if it occurred during
     effect drain operations.  This was bad if effects had
     bugs and stuck in infinite loop.
   o Stop SoX from crashing when file type could not be auto
@@ -1692,68 +2157,3 @@ to busy to even look for it.
      "mixer" for Linux) then you will want to edit the play and rec
      to use this.  The current support for it is only in example
      form of how it can be done.
-
-
-List of earlier SoX Contributors
---------------------------------
-Covering the time from its creation (Jul '91) until sox-11gamma (Feb '95):
-
-  o Lance Norskog		thinman at netcom.com
-	Creator & maintenance
-  o Guido Van Rossum		guido at cwi.nl
-	AU, AIFF, AUTO, HCOM, reverse, many bug fixes
-  o Jef Poskanzer		jef at well.sf.ca.us
-	original code for u-law and delay line
-  o Bill Neisius		bill%solaria at hac2arpa.hac.com 
-	DOS port, 8SVX, Sounder, Soundtool formats
-	Apollo fixes, stat with auto-picker
-  o Rick Richardson		rick at digibd.com
-	WAV and SB driver handlers, fixes
-  o David Champion		dgc3 at midway.uchicago.edu
-	Amiga port 
-  o Pace Willisson		pace at blitz.com
-	Fixes for ESIX
-  o Leigh Smith			leigh at psychok.dialix.oz.au
-	SMP and comment movement support.
-  o David Sanderson		dws at ssec.wisc.edu
-	AIX3.1 fixes
-  o Glenn Lewis			glewis at pcocd2.intel.com
-	AIFF chunking fixes
-  o Brian Campbell		brianc at quantum.qnx.com
-	QNX port and 16-bit fixes
-  o Chris Adams			gt8741 at prism.gatech.edu
-	DOS port fixes
-  o John Kohl			jtkohl at kolvir.elcr.ca.us
-	BSD386 port, VOC stereo support
-  o Ken Kubo			ken at hmcvax.claremont.edu
-	VMS port, VOC stereo support
-  o Frank Gadegast 		phade at cs.tu-berlin.de
-	Microsoft C 7.0 & C Borland 3.0 ports
-  o David Elliot		dce at scmc.sony.com
-	CD-R format support
-  o David Sears			dns at essnj3.essnjay.com
-	Linux support
-  o Tom Littlejohn		tlit at seq1.loc.gov
-	Raw textual data
-  o Boisy G. Pitre 		boisy at microware.com
-	OS9 port
-  o Sun Microsystems, Guido Van Rossum
-	CCITT G.711, G.721, G.723 implementation
-  o Graeme Gill			graeme at labtam.labtam.oz.au
-	A-LAW format, Good .WAV handling, avg channel expansion
-  o Allen Grider		grider at hfsi.hfsi.com
-	VOC stereo mode, WAV file handling
-  o Michel Fingerhut 		Michel.Fingerhut at ircam.fr
-	Upgrade 'sf' format to current IRCAM format.  Float file support.
-  o Chris Knight
-	Achimedes Acorn support
-  o Richard Caley 		R.Caley at ed.ac.uk
-	Psion WVE handler
-  o Lutz Vieweg			lkv at mania.RoBIN.de
-	MAUD (Amiga) file handler
-  o Tim Gardner			timg at tpi.com
-	Windows NT port for V7
-  o Jimen Ching 		jiching at wiliki.eng.hawaii.edu
-	Libst porting bugs
-  o Lauren Weinstein		lauren at vortex.com
-	DOS porting, scripts, professional use

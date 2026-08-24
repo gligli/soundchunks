@@ -1109,6 +1109,9 @@ begin
   begin
     chunk := reducedChunks[iChunk];
 
+    // also reset chunk useCount
+    chunk.useCount := 0;
+
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
       Dataset[dsIdx + 0, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, False, encoder.GainFactor);

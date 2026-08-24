@@ -1,3 +1,9 @@
+SoX is distributed under the GNU General Public Licence version 2.
+
+Most individual source files are distributed under more permissive licenses
+compatible with the GPLv2. See the individual source files for details.
+
+
 		    GNU GENERAL PUBLIC LICENSE
 		       Version 2, June 1991
 
@@ -333,7 +339,4 @@ necessary.  Here is a sample; alter the names:
   Ty Coon, President of Vice
 
 This General Public License does not permit incorporating your program into
-proprietary programs.  If your program is a subroutine library, you may
-consider it more useful to permit linking proprietary applications with the
-library.  If this is what you want to do, use the GNU Lesser General
-Public License instead of this License.
+proprietary programs.
