@@ -116,7 +116,7 @@ gsc_timer_a_update_int:
 		cmp.b	d1,d0
 		beq.s	.wait_change_lp
 
-	; already synced?
+	; get relative sample position
 	movep.l	$ffff8907(a0),d1
 	andi.l	#$00ffffff,d1
 	sub.l	a1,d1
