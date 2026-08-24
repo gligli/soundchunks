@@ -1543,16 +1543,9 @@ begin
 
   FrameCount := Max(1, ceil(SampleCount / (SampleRate * (FrameLength / 1000))));
 
-{$ifdef ATARI_STE}
-  ChunksPerFrame := ChunksPerFrame and (High(Word) - 1);
-  Inc(ChunksPerFrame, 2);
-  repeat
-    Dec(ChunksPerFrame, 2);
-{$else}
   Inc(ChunksPerFrame);
   repeat
     Dec(ChunksPerFrame);
-{$endif}
 
     indexingCost :=
       (SampleCount * ChannelCount * (
@@ -1701,7 +1694,7 @@ begin
   PiggyCodingBlocksBits := 1;
   PiggyCodingSolveByValue := True;
   NoSolveFilterSettings := False;
-  GainFactor := 0.5;
+  GainFactor := Power(10.0, -4.5 / 20.0);
 {$else}
   ChunkSize := 4;
   ChunksPerAttenuation := 16;
@@ -1763,7 +1756,7 @@ end;
 
 class function TEncoder.makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean; gain: Double): TOutputSample;
 var
-  obd: Integer;
+  obd, loBnd, upBnd: Integer;
   smp16, coeff: Double;
 begin
   coeff := ComputeAttenuation(Attenuation);
@@ -1771,8 +1764,10 @@ begin
   obd := (1 shl (OutBitDepth - 1)) - 1;
   smp16 := smp * obd * coeff * gain;
   if Negative then smp16 := -smp16;
-  Result.AsInt := EnsureRange(Round(smp16), -obd, obd);
-  Result.AsDouble := EnsureRange(smp16, -obd, obd);
+  loBnd := Floor(-obd * gain);
+  upBnd := Ceil(obd * gain);
+  Result.AsInt := EnsureRange(Round(smp16), loBnd, upBnd);
+  Result.AsDouble := EnsureRange(smp16, loBnd, upBnd);
 end;
 
 class function TEncoder.makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean; gain: Double): Double;
@@ -1784,6 +1779,7 @@ begin
   obd := (1 shl (OutBitDepth - 1)) - 1;
   if Negative then smp := -smp;
   Result := smp / (obd * coeff * gain);
+  Result := EnsureRange(Result, -1.0, 1.0);
 end;
 
 class function TEncoder.SolveAttenuation(chunkSz: Integer; samples: PDouble): Byte;
