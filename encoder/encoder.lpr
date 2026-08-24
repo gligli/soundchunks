@@ -1093,6 +1093,8 @@ begin
   SetLength(Dataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, encoder.chunkSize * 2);
 
   SetLength(query, encoder.chunkSize * 2);
+
+{$ifndef ATARI_STE}
   SetLength(truthAcc, encoder.ChannelCount);
   SetLength(lossyAcc, encoder.ChannelCount);
   for iChannel := 0 to encoder.ChannelCount - 1 do
@@ -1100,6 +1102,7 @@ begin
     truthAcc[iChannel] := srcFirstSample[iChannel];
     lossyAcc[iChannel] := truthAcc[iChannel];
   end;
+{$endif}
 
   dsIdx := 0;
   for iChunk := 0 to reducedChunks.Count - 1 do
@@ -1129,7 +1132,12 @@ begin
 
       attCoeff := encoder.ComputeAttenuation(chunk.dstAttenuation);
 
+{$ifdef ATARI_STE}
+      skew := 0.0; // skew compensation is detrimentary on STe
+{$else}
       skew := (lossyAcc[chunk.channel] - truthAcc[chunk.channel]) / encoder.ChunkSize;
+{$endif}
+
       for iSample := 0 to encoder.ChunkSize - 1 do
         query[encoder.chunkSize + iSample] := (chunk.srcData[iSample] - skew) * attCoeff;
 
@@ -1143,11 +1151,13 @@ begin
 
       Inc(chunk.reducedChunk.useCount);
 
+{$ifndef ATARI_STE}
       for iSample := 0 to encoder.ChunkSize - 1 do
       begin
         truthAcc[chunk.channel] += chunk.srcData[iSample];
         lossyAcc[chunk.channel] += Dataset[bestIdx, encoder.ChunkSize + iSample] / attCoeff;
       end;
+{$endif}
     end;
   finally
     ann_kdtree_destroy(KDT);
