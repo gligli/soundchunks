@@ -3,7 +3,7 @@ program decoder;
 uses Types, SysUtils, Classes, Math, extern;
 
 const
-  CDecodedStreamVersion = 5;
+  CDecodedStreamVersion = 6;
   CMaxAttenuationBits = 6;
   CAttenuationLawDecibels = 0.75;
 
@@ -53,10 +53,9 @@ var
 
   procedure GSCUnpack(ASourceStream, ADestStream: TStream);
   var
-    iChunk, iSample, iChannel, iVariableCoding, cpaCounter: Integer;
-    bitCount, variableCodingHeader, chunkAttenuation, finalSample, clippingErrors: Integer;
+    iChunk, iCPABlock, iSample, iChannel, iVariableCoding: Integer;
+    bitCount, variableCodingHeader, chunksAttenuation, finalSample, clippingErrors: Integer;
     delta, b, s1, s2: Integer;
-    w: Word;
     channelSample: TIntegerDynArray;
     chunkIndex: TIntegerDynArray;
     chunkNegative, chunkReversed: TBooleanDynArray;
@@ -65,23 +64,29 @@ var
     Chunks: TSmallIntDynArray2;
     piggyCodings: TByteDynArray;
     memStream: TMemoryStream;
-    bits: Cardinal;
+    bits: Word;
 
-    function GetBits(ABitCount: Integer): Integer;
+    function GetBit: Integer;
     begin
-      Assert(ABitCount <= bitCount);
-      Result := bits and ((1 shl ABitCount) - 1);
-      bits := bits shr ABitCount;
-      bitCount -= ABitCount;
+      Dec(bitCount);
+      if bitCount <= 0 then
+      begin
+        bits := ASourceStream.ReadWord;
+        bitCount := BitSizeOf(bits);
+      end;
+      bits := RolWord(bits);
+      Result := bits and 1;
     end;
 
-    procedure FillBits;
+    function GetBits(ABitCount: Integer): Integer;
+    var
+      iBit: Integer;
     begin
-      if (bitCount < 16) and (ASourceStream.Position < ASourceStream.Size) then
+      Result := 0;
+      for iBit := 0 to ABitCount - 1 do
       begin
-        w := ASourceStream.ReadWord;
-        bits := bits or (w shl bitCount);
-        bitCount += 16;
+        Result := Result shl 1;
+        Result := Result or GetBit;
       end;
     end;
 
@@ -107,7 +112,7 @@ var
         SampleRate := ASourceStream.ReadDWord;
         PiggyMaxCodingBits := SampleRate shr 24;
         SampleRate := SampleRate and $ffffff;
-        ChunksPerAttenuation := ASourceStream.ReadByte * ChannelCount;
+        ChunksPerAttenuation := ASourceStream.ReadByte;
         ASourceStream.ReadByte;
 
         if memStream.Position = 0 then
@@ -168,6 +173,8 @@ var
 
         FrameLength := ASourceStream.ReadDWord;
 
+        Assert((FrameLength mod ChunksPerAttenuation) = 0, 'Frame should contain an integer number of ChunksPerAttenuation');
+
         for iChannel := 0 to ChannelCount - 1 do
           channelSample[iChannel] := SmallInt(ASourceStream.ReadWord);
 
@@ -177,63 +184,49 @@ var
         bits := 0;
         bitCount := 0;
         variableCodingHeader := -1;
-        chunkAttenuation := 0;
-        cpaCounter := -1;
-        for iChunk := 0 to FrameLength - 1 do
+        chunksAttenuation := 0;
+
+        for iCPABlock := 0 to FrameLength div ChunksPerAttenuation - 1 do
         begin
-          for iChannel := 0 to ChannelCount - 1 do
+          chunksAttenuation := GetBits(CMaxAttenuationBits);
+
+          for iChunk := 0 to ChunksPerAttenuation - 1 do
           begin
-            FillBits;
-
-            Dec(cpaCounter);
-            if cpaCounter <= 0 then
-            begin
-              cpaCounter := ChunksPerAttenuation;
-              chunkAttenuation := GetBits(CMaxAttenuationBits);
-            end;
-
-            chunkNegative[iChannel] := GetBits(1) <> 0;
-            chunkReversed[iChannel] := GetBits(1) <> 0;
-
-            if GetBits(1) <> 0 then // has new header?
-              variableCodingHeader := GetBits(PiggyMaxCodingBits);
-
-            FillBits;
-
-            chunkIndex[iChannel] := 0;
-            for iVariableCoding := 0 to variableCodingHeader - 1 do
-              chunkIndex[iChannel] += 1 shl piggyCodings[iVariableCoding];
-            chunkIndex[iChannel] += GetBits(piggyCodings[variableCodingHeader]);
-          end;
-
-          for iSample := 0 to ChunkSize - 1 do
             for iChannel := 0 to ChannelCount - 1 do
             begin
-              delta := Chunks[chunkIndex[iChannel], IfThen(chunkReversed[iChannel], ChunkSize - 1 - iSample, iSample)];
-              delta := Attenuate(delta, chunkAttenuation);
-              if chunkNegative[iChannel] then
-                delta := -delta;
+              chunkNegative[iChannel] := GetBits(1) <> 0;
+              chunkReversed[iChannel] := GetBits(1) <> 0;
 
-              channelSample[iChannel] += delta;
+              if GetBits(1) <> 0 then // has new header?
+                variableCodingHeader := GetBits(PiggyMaxCodingBits);
 
-              finalSample := channelSample[iChannel];
-              if not InRange(finalSample, Low(SmallInt), High(SmallInt)) then
-              begin
-                Inc(clippingErrors);
-                finalSample := EnsureRange(finalSample, Low(SmallInt), High(SmallInt));
-              end;
-
-              memStream.WriteWord(Word(finalSample));
+              chunkIndex[iChannel] := 0;
+              for iVariableCoding := 0 to variableCodingHeader - 1 do
+                chunkIndex[iChannel] += 1 shl piggyCodings[iVariableCoding];
+              chunkIndex[iChannel] += GetBits(piggyCodings[variableCodingHeader]);
             end;
-        end;
 
-        if bitCount >= 16 then // fixup potentially reading 1 spurious word
-        begin
-          ASourceStream.Seek(-2, soCurrent);
-          bitCount -= 16;
-        end;
+            for iSample := 0 to ChunkSize - 1 do
+              for iChannel := 0 to ChannelCount - 1 do
+              begin
+                delta := Chunks[chunkIndex[iChannel], IfThen(chunkReversed[iChannel], ChunkSize - 1 - iSample, iSample)];
+                delta := Attenuate(delta, chunksAttenuation);
+                if chunkNegative[iChannel] then
+                  delta := -delta;
 
-        Assert(bitCount < 16);
+                channelSample[iChannel] += delta;
+
+                finalSample := channelSample[iChannel];
+                if not InRange(finalSample, Low(SmallInt), High(SmallInt)) then
+                begin
+                  Inc(clippingErrors);
+                  finalSample := EnsureRange(finalSample, Low(SmallInt), High(SmallInt));
+                end;
+
+                memStream.WriteWord(Word(finalSample));
+              end;
+          end;
+        end;
       end;
 
       memStream.Seek(0, soFromBeginning);

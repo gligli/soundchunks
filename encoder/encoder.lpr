@@ -7,7 +7,7 @@ uses
   extern, mtpool;
 
 const
-  CStreamVersion = 5;
+  CStreamVersion = 6;
 
 {$ifdef ATARI_STE}
   CMaxAttenuationBits = 4;
