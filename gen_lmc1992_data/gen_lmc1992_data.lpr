@@ -161,7 +161,7 @@ begin
         end;
       end;
 
-      WriteLn('Done!');
+    WriteLn('Done!');
   finally
     dataStream.Free;
   end;
