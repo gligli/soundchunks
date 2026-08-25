@@ -36,8 +36,14 @@ type
   public
     constructor Create(ASampleRate: Integer); virtual;
     procedure Init; virtual; abstract;
-    function PreFilter(s: Double): Double; virtual; abstract;
-    function DeFilter(s: Double): Double; virtual; abstract;
+
+    procedure PreFilter_InPlace(var AData: TDoubleDynArray); virtual; abstract;
+    procedure DeFilter_InPlace(var AData: TDoubleDynArray); virtual; abstract;
+
+    function PreFilter(const AData: TSmallIntDynArray): TDoubleDynArray; overload;
+    function DeFilter(const AData: TSmallIntDynArray): TDoubleDynArray; overload;
+    function PreFilter(const AData: TDoubleDynArray): TDoubleDynArray; overload;
+    function DeFilter(const AData: TDoubleDynArray): TDoubleDynArray; overload;
   end;
 
   { TDeltaFilter }
@@ -48,8 +54,9 @@ type
     accSample: Double;
   public
     procedure Init; override;
-    function PreFilter(s: Double): Double; override;
-    function DeFilter(s: Double): Double; override;
+
+    procedure PreFilter_InPlace(var AData: TDoubleDynArray); override;
+    procedure DeFilter_InPlace(var AData: TDoubleDynArray); override;
   end;
 
   { TLMC1992Filter }
@@ -70,7 +77,7 @@ type
 
     coef: array[Boolean{DeFilter?}, Boolean{treble?}] of TFirstOrder;
 
-    data: array[Boolean{DeFilter?}, Boolean{treble?}] of record
+    data: array[Boolean{DeFilter_InPlace?}, Boolean{treble?}] of record
       x1, y1: Double;
     end;
 
@@ -83,10 +90,11 @@ type
 
     constructor Create(ASampleRate: Integer); override;
     procedure Init; override;
-    function PreFilter(s: Double): Double; override;
-    function DeFilter(s: Double): Double; override;
 
     procedure Set_Tone_Level(set_bass, set_treb: Byte);
+
+    procedure PreFilter_InPlace(var AData: TDoubleDynArray); override;
+    procedure DeFilter_InPlace(var AData: TDoubleDynArray); override;
   end;
 
   { TPiggyCoder }
@@ -292,9 +300,59 @@ begin
   Result := StrToFloatDef(copy(ParamStr(idx), Length(p) + 1), def);
 end;
 
+{ TEmphasisFilter }
+
 constructor TEmphasisFilter.Create(ASampleRate: Integer);
 begin
   sampleRate := ASampleRate;
+end;
+
+function TEmphasisFilter.PreFilter(const AData: TSmallIntDynArray): TDoubleDynArray;
+var
+  iData: Integer;
+begin
+  SetLength(Result, Length(AData));
+
+  for iData := 0 to High(AData) do
+    Result[iData] := AData[iData];
+
+  PreFilter_InPlace(Result);
+end;
+
+function TEmphasisFilter.DeFilter(const AData: TSmallIntDynArray): TDoubleDynArray;
+var
+  iData: Integer;
+begin
+  SetLength(Result, Length(AData));
+
+  for iData := 0 to High(AData) do
+    Result[iData] := AData[iData];
+
+  DeFilter_InPlace(Result);
+end;
+
+function TEmphasisFilter.PreFilter(const AData: TDoubleDynArray): TDoubleDynArray;
+var
+  iData: Integer;
+begin
+  SetLength(Result, Length(AData));
+
+  for iData := 0 to High(AData) do
+    Result[iData] := AData[iData];
+
+  PreFilter_InPlace(Result);
+end;
+
+function TEmphasisFilter.DeFilter(const AData: TDoubleDynArray): TDoubleDynArray;
+var
+  iData: Integer;
+begin
+  SetLength(Result, Length(AData));
+
+  for iData := 0 to High(AData) do
+    Result[iData] := AData[iData];
+
+  DeFilter_InPlace(Result);
 end;
 
 { TDeltaFilter }
@@ -305,16 +363,30 @@ begin
   accSample := 0.0;
 end;
 
-function TDeltaFilter.PreFilter(s: Double): Double;
+procedure TDeltaFilter.PreFilter_InPlace(var AData: TDoubleDynArray);
+var
+  iData: Integer;
+  s: Double;
 begin
-  Result := s - prevSample;
-  prevSample := s;
+  for iData := 0 to High(AData) do
+  begin
+    s := AData[iData];
+    AData[iData] := s - prevSample;
+    prevSample := s;
+  end;
 end;
 
-function TDeltaFilter.DeFilter(s: Double): Double;
+procedure TDeltaFilter.DeFilter_InPlace(var AData: TDoubleDynArray);
+var
+  iData: Integer;
+  s: Double;
 begin
-  accSample += s;
-  Result := accSample;
+  for iData := 0 to High(AData) do
+  begin
+    s := AData[iData];
+    accSample += s;
+    AData[iData] := accSample;
+  end;
 end;
 
 { TLMC1992Filter }
@@ -446,22 +518,34 @@ begin
     end;
 end;
 
-function TLMC1992Filter.PreFilter(s: Double): Double;
+procedure TLMC1992Filter.PreFilter_InPlace(var AData: TDoubleDynArray);
 var
+  iData: Integer;
   tr: Boolean;
+  s: Double;
 begin
-  Result := s;
-  for tr := False to True do
-    Result := BiQuad(Result, False, tr);
+  for iData := 0 to High(AData) do
+  begin
+    s := AData[iData];
+    for tr := False to True do
+      s := BiQuad(s, False, tr);
+    AData[iData] := s;
+  end;
 end;
 
-function TLMC1992Filter.DeFilter(s: Double): Double;
+procedure TLMC1992Filter.DeFilter_InPlace(var AData: TDoubleDynArray);
 var
+  iData: Integer;
   tr: Boolean;
+  s: Double;
 begin
-  Result := s;
-  for tr := False to True do
-    Result := BiQuad(Result, True, tr);
+  for iData := 0 to High(AData) do
+  begin
+    s := AData[iData];
+    for tr := False to True do
+      s := BiQuad(s, True, tr);
+    AData[iData] := s;
+  end;
 end;
 
 procedure TLMC1992Filter.Set_Tone_Level(set_bass, set_treb: Byte);
@@ -906,24 +990,28 @@ end;
 procedure TFrame.MakeChunks;
 var
   iSample, iChannel, iChunk: Integer;
-  smp: Double;
   chunk: TChunk;
+  tmpSmp: TDoubleDynArray;
 begin
   SetLength(srcFirstSample, encoder.ChannelCount);
   SetLength(srcData, encoder.ChannelCount, SampleCount);
+  SetLength(tmpSmp, 1);
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
   begin
+    filter[iChannel].Init;
+
     srcFirstSample[iChannel] := 0.0;
     if StartSample > 0 then
       srcFirstSample[iChannel] := TEncoder.makeFloatSample(encoder.SrcData[iChannel, StartSample - 1]);
-    filter[iChannel].Init;
-    filter[iChannel].PreFilter(srcFirstSample[iChannel]);
+
+    tmpSmp[0] := srcFirstSample[iChannel];
+    filter[iChannel].PreFilter(tmpSmp);
+
     for iSample := 0 to SampleCount - 1 do
-    begin
-      smp := TEncoder.makeFloatSample(encoder.SrcData[iChannel, StartSample + iSample]);
-      srcData[iChannel, iSample] := filter[iChannel].PreFilter(smp);
-    end;
+      srcData[iChannel, iSample] := TEncoder.makeFloatSample(encoder.SrcData[iChannel, StartSample + iSample]);
+
+    filter[iChannel].PreFilter_InPlace(srcData[iChannel]);
   end;
 
   reducedChunks.Clear;
@@ -1327,15 +1415,20 @@ var
   smp: Double;
   pos: TIntegerDynArray;
   piggyCodes: TPiggyCoder.TCodeArray;
+  tmpSmp: TDoubleDynArray;
 begin
+  // audio
+
   SetLength(pos, encoder.ChannelCount);
   SetLength(dstData, encoder.ChannelCount, SampleCount);
+  SetLength(tmpSmp, 1);
   for iChannel := 0 to encoder.ChannelCount - 1 do
   begin
     FillQWord(dstData[iChannel, 0], SampleCount, 0);
     pos[iChannel] := 0;
     filter[iChannel].Init;
-    filter[iChannel].DeFilter(srcFirstSample[iChannel]);
+    tmpSmp[0] := srcFirstSample[iChannel];
+    filter[iChannel].DeFilter(tmpSmp);
   end;
 
   for iChunk := 0 to plainChunks.Count - 1 do
@@ -1347,11 +1440,16 @@ begin
       smp := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, encoder.ChunkSize - 1 - iSample, iSample)], encoder.ChunkBitDepth, chunk.dstAttenuation, chunk.dstNegative, encoder.GainFactor);
 
       if InRange(pos[chunk.channel], 0, High(dstData[chunk.channel])) then
-        dstData[chunk.channel, pos[chunk.channel]] := filter[chunk.channel].DeFilter(smp);
+        dstData[chunk.channel, pos[chunk.channel]] := smp;
 
       Inc(pos[chunk.channel]);
     end;
   end;
+
+  for iChannel := 0 to encoder.ChannelCount - 1 do
+    filter[iChannel].DeFilter_InPlace(dstData[iChannel]);
+
+  // bitcode
 
   SetLength(piggyCodes, plainChunks.Count);
   for iChunk := 0 to plainChunks.Count - 1 do
@@ -1518,10 +1616,11 @@ const
   CVariableCodingRatio = 0.7;
 var
   iChannel, iSample, frmIdx, nextStart, psc, tentativeByteSize: Integer;
-  frm: TFrame;
   headerCost, chunksCost, indexingCost: Double;
   totalPower, perFramePower, curPower, smp: Double;
-  flt: array of TEmphasisFilter;
+  flt: TEmphasisFilter;
+  frm: TFrame;
+  fltSmp: TDoubleDynArray2;
 begin
   WriteLn('[PrepareFrames]');
 
@@ -1602,72 +1701,72 @@ begin
 
   // pass 2
 
-  SetLength(flt, ChannelCount);
+  SetLength(fltSmp, ChannelCount);
   for iChannel := 0 to ChannelCount - 1 do
-    flt[iChannel] := CreateEmphasisFilter;
-  try
-    totalPower := 0;
-    for iSample := 0 to SampleCount - 1 do
-    begin
-      smp := 0;
-      for iChannel := 0 to ChannelCount - 1 do
-        smp += Sqr(flt[iChannel].PreFilter(SrcData[iChannel, iSample]));
-      smp := Round(Sqrt(smp / ChannelCount));
-
-      totalPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
+  begin
+    flt := CreateEmphasisFilter;
+    try
+      fltSmp[iChannel] := flt.PreFilter(SrcData[iChannel]);
+    finally
+      flt.Free;
     end;
-
-    perFramePower := totalPower / FrameCount;
-
-    if Verbose then
-    begin
-      writeln('TotalPower = ', Round(totalPower / High(SmallInt)));
-      writeln('PerFramePower = ', Round(perFramePower / High(SmallInt)));
-    end;
-
-    for iChannel := 0 to ChannelCount - 1 do
-      flt[iChannel].Init;
-
-    frmIdx := 0;
-    nextStart := 0;
-    curPower := 0;
-    SetLength(Frames, FrameCount);
-    for iSample := 0 to SampleCount - 1 do
-    begin
-      smp := 0;
-      for iChannel := 0 to ChannelCount - 1 do
-        smp += Sqr(flt[iChannel].PreFilter(SrcData[iChannel, iSample]));
-      smp := Round(Sqrt(smp / ChannelCount));
-
-      curPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
-
-      if (iSample mod BlockSampleCount = 0) and (curPower >= perFramePower) then
-      begin
-        if frmIdx >= Length(Frames) then
-          SetLength(Frames, frmIdx + 1);
-
-        frm := TFrame.Create(Self, frmIdx, nextStart, iSample - 1);
-        Frames[frmIdx] := frm;
-        Inc(frmIdx);
-
-        curPower := 0;
-        nextStart := iSample;
-      end;
-    end;
-
-    if frmIdx >= Length(Frames) then
-      SetLength(Frames, frmIdx + 1);
-
-    frm := TFrame.Create(Self, frmIdx, nextStart, SampleCount - 1);
-    Frames[frmIdx] := frm;
-    Inc(frmIdx);
-
-    SetLength(Frames, frmIdx);
-    FrameCount := frmIdx;
-  finally
-    for iChannel := 0 to ChannelCount - 1 do
-      flt[iChannel].Free;
   end;
+
+  totalPower := 0;
+  for iSample := 0 to SampleCount - 1 do
+  begin
+    smp := 0;
+    for iChannel := 0 to ChannelCount - 1 do
+      smp += Sqr(fltSmp[iChannel, iSample]);
+    smp := Sqrt(smp / ChannelCount);
+
+    totalPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
+  end;
+
+  perFramePower := totalPower / FrameCount;
+
+  if Verbose then
+  begin
+    writeln('TotalPower = ', totalPower / High(SmallInt):12:3);
+    writeln('PerFramePower = ', perFramePower / High(SmallInt):12:3);
+  end;
+
+  frmIdx := 0;
+  nextStart := 0;
+  curPower := 0;
+  SetLength(Frames, FrameCount);
+  for iSample := 0 to SampleCount - 1 do
+  begin
+    smp := 0;
+    for iChannel := 0 to ChannelCount - 1 do
+      smp += Sqr(fltSmp[iChannel, iSample]);
+    smp := Sqrt(smp / ChannelCount);
+
+    curPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
+
+    if (iSample mod BlockSampleCount = 0) and (curPower >= perFramePower) then
+    begin
+      if frmIdx >= Length(Frames) then
+        SetLength(Frames, frmIdx + 1);
+
+      frm := TFrame.Create(Self, frmIdx, nextStart, iSample - 1);
+      Frames[frmIdx] := frm;
+      Inc(frmIdx);
+
+      curPower := 0;
+      nextStart := iSample;
+    end;
+  end;
+
+  if frmIdx >= Length(Frames) then
+    SetLength(Frames, frmIdx + 1);
+
+  frm := TFrame.Create(Self, frmIdx, nextStart, SampleCount - 1);
+  Frames[frmIdx] := frm;
+  Inc(frmIdx);
+
+  SetLength(Frames, frmIdx);
+  FrameCount := frmIdx;
 end;
 
 procedure TEncoder.MakeFrames;
