@@ -236,6 +236,8 @@ type
     SrcHeader: array[$00..$2b] of Byte;
     SrcData: TSmallIntDynArray2;
     DstData: TSmallIntDynArray2;
+    DCTLut: TDoubleDynArray;
+    InvDCTLut: TDoubleDynArray;
 
     Frames: array of TFrame;
 
@@ -247,12 +249,14 @@ type
     class function makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean; gain: Double): Double;
     class function SolveAttenuation(chunkSz: Integer; samples: PDouble): Byte;
     class function ComputeAttenuation(Attenuation: Integer): Double;
-    class procedure ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
-    class procedure ComputeInvDCT(chunkSz: Integer; dct, samples: PDouble);
+    class procedure ComputeDCTLut(chunkSz: Integer; lut: PDouble);
+    class procedure ComputeInvDCTLut(chunkSz: Integer; lut: PDouble);
     class function CompareEuclidean(const dctA, dctB: TDoubleDynArray): Double; overload;
     class function CompareMuLawManhattan(const dctA, dctB: TDoubleDynArray): TPsyADelta;
     class function ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): TPsyADelta;
     class procedure createWAV(channels: word; resolution: word; rate: longint; fn: string; const data: TSmallIntDynArray);
+
+    class procedure ConvolveDCT(chunkSz: Integer; input, output, lut: PDouble);
 
     constructor Create(InFN, OutFN: String);
     destructor Destroy; override;
@@ -895,7 +899,7 @@ begin
     data[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, frame.encoder.ChunkSize - 1 - iSample, iSample)], 2, dstAttenuation, dstNegative, 1.0).AsDouble;
 
   SetLength(Result, frame.encoder.ChunkSize);
-  TEncoder.ComputeDCT(Length(data), @data[0], @Result[0]);
+  TEncoder.ConvolveDCT(Length(data), @data[0], @Result[0], @frame.encoder.DCTLut[0]);
 end;
 
 procedure TChunk.ComputeFromFeatures(AFeatures: PDouble);
@@ -904,7 +908,7 @@ var
   data: TDoubleDynArray;
 begin
   SetLength(data, frame.encoder.ChunkSize);
-  TEncoder.ComputeInvDCT(frame.encoder.ChunkSize, @AFeatures[0], @data[0]);
+  TEncoder.ConvolveDCT(frame.encoder.ChunkSize, @AFeatures[0], @data[0], @frame.encoder.InvDCTLut[0]);
 
   SetLength(dstData, frame.encoder.ChunkSize);
   for iSample := 0 to High(data) do
@@ -1210,7 +1214,7 @@ begin
 
     for iDS := 0 to 3 do
     begin
-      TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx, encoder.chunkSize], @Dataset[dsIdx, 0]);
+      TEncoder.ConvolveDCT(encoder.ChunkSize, @Dataset[dsIdx, encoder.chunkSize], @Dataset[dsIdx, 0], @encoder.DCTLut[0]);
       Inc(dsIdx);
     end;
   end;
@@ -1232,7 +1236,7 @@ begin
       for iSample := 0 to encoder.ChunkSize - 1 do
         query[encoder.chunkSize + iSample] := (chunk.srcData[iSample] - skew) * attCoeff;
 
-      TEncoder.ComputeDCT(encoder.ChunkSize, @query[encoder.chunkSize], @query[0]);
+      TEncoder.ConvolveDCT(encoder.ChunkSize, @query[encoder.chunkSize], @query[0], @encoder.DCTLut[0]);
 
       bestIdx := ann_kdtree_search(KDT, @query[0], 0.0, @bestErr);
 
@@ -1626,6 +1630,11 @@ begin
 
   // pass 1
 
+  SetLength(DCTLut, Sqr(ChunkSize));
+  SetLength(InvDCTLut, Sqr(ChunkSize));
+  ComputeDCTLut(ChunkSize, @DCTLut[0]);
+  ComputeInvDCTLut(ChunkSize, @InvDCTLut[0]);
+
 {$ifdef ATARI_STE}
   ChunksPerAttenuation := Max(1, Round(ChunksPerAttenuation / AttenuationChunkRatioMul));
 {$else}
@@ -1917,35 +1926,33 @@ begin
   Result := Power(10.0, Attenuation * CAttenuationLawDecibels / 20.0);
 end;
 
-class procedure TEncoder.ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
+class procedure TEncoder.ComputeDCTLut(chunkSz: Integer; lut: PDouble);
 var
   k, n: Integer;
-  sum: Double;
 begin
   for k := 0 to chunkSz - 1 do
   begin
-    sum := 0;
     for n := 0 to chunkSz - 1 do
-      sum += samples[n] * cos(pi / chunkSz * (n + 0.5) * k);
-
-    dct^ := sum * sqrt (2.0 / chunkSz);
-    Inc(dct);
+    begin
+      lut^ := cos(pi / chunkSz * (n + 0.5) * k) * sqrt (2.0 / chunkSz);
+      Inc(lut);
+    end;
   end;
 end;
 
-class procedure TEncoder.ComputeInvDCT(chunkSz: Integer; dct, samples: PDouble);
+class procedure TEncoder.ComputeInvDCTLut(chunkSz: Integer; lut: PDouble);
 var
   k, n: Integer;
-  sum: Double;
 begin
   for k := 0 to chunkSz - 1 do
   begin
-    sum := 0.5 * dct[0];
+    lut^ := 0.5 * sqrt(2.0 / chunkSz);
+    Inc(lut);
     for n := 1 to chunkSz - 1 do
-      sum += dct[n] * cos (pi / chunkSz * (k + 0.5) * n);
-
-    samples^ := sum * sqrt(2.0 / chunkSz);
-    Inc(samples);
+    begin
+      lut^ := cos(pi / chunkSz * (k + 0.5) * n) * sqrt(2.0 / chunkSz);
+      Inc(lut);
+    end;
   end;
 end;
 
@@ -2052,6 +2059,24 @@ begin
   end;
 end;
 
+class procedure TEncoder.ConvolveDCT(chunkSz: Integer; input, output, lut: PDouble);
+var
+  k, n, p: Integer;
+  acc: Double;
+begin
+  p := 0;
+  for k := 0 to chunkSz - 1 do
+  begin
+    acc := 0.0;
+    for n := 0 to chunkSz - 1 do
+    begin
+      acc += input[n] * lut[p];
+      Inc(p);
+    end;
+    output[k] := acc;
+  end;
+end;
+
 procedure test_dct_idct;
 const
   CIter = 1000;
@@ -2061,14 +2086,20 @@ var
   test: array[0 .. CLen - 1] of Double;
   dct: array[0 .. CLen - 1] of Double;
   invdct: array[0 .. CLen - 1] of Double;
+  lut: array[0 .. Sqr(CLen) - 1] of Double;
+  ilut: array[0 .. Sqr(CLen) - 1] of Double;
 begin
   RandSeed := $42381337;
+
+  TEncoder.ComputeDCTLut(CLen, @lut[0]);
+  TEncoder.ComputeInvDCTLut(CLen, @ilut[0]);
+
   for iIter := 0 to CIter - 1 do
   begin
     for iDCT := 0 to CLen - 1 do
       test[iDCT] := Random * 2.0 - 1.0;
-    TEncoder.ComputeDCT(CLen, @test[0], @dct[0]);
-    TEncoder.ComputeInvDCT(CLen, @dct[0], @invdct[0]);
+    TEncoder.ConvolveDCT(CLen, @test[0], @dct[0], @lut[0]);
+    TEncoder.ConvolveDCT(CLen, @dct[0], @invdct[0], @ilut[0]);
     for iDCT := 0 to CLen - 1 do
       Assert(SameValue(test[iDCT], invdct[iDCT], 1e-6));
   end;
