@@ -4,7 +4,7 @@ program encoder;
 
 uses
   windows, Classes, sysutils, strutils, Types, fgl, math,
-  extern, mtpool;
+  extern, mtpool, ap, fft;
 
 const
   CStreamVersion = 6;
@@ -65,33 +65,28 @@ type
   // updated with code from https://docs.rs/ym2149-sndh-replayer/latest/src/ym2149_sndh_replayer/lmc1992.rs.html
   TLMC1992Filter = class(TEmphasisFilter)
   const
-    TONE_STEPS = 13;
-    NEUTRAL_TONE = 6;
+    CToneSteps = 13;
+    CNeutralTone = 6;
+    CFFTSize = 4096;
   type
-    TFirstOrder = record
-      a1, b0, b1: Double;
+    TSpiceFreqRespPoint = packed record
+      Frequency, Gain: Single;
     end;
+    TSpiceFreqResp = array of TSpiceFreqRespPoint;
+    TFFTFreqRespTable = array[0 .. CToneSteps - 1 {bass}, 0 .. CToneSteps - 1 {treb}, 0 .. CFFTSize shr 1] of Double;
+    PFFTFreqRespTable = ^TFFTFreqRespTable;
   private
-    bass_table: array[0 .. TONE_STEPS - 1] of TFirstOrder;
-    treb_table: array[0 .. TONE_STEPS - 1] of TFirstOrder;
-
-    coef: array[Boolean{DeFilter?}, Boolean{treble?}] of TFirstOrder;
-
-    data: array[Boolean{DeFilter_InPlace?}, Boolean{treble?}] of record
-      x1, y1: Double;
-    end;
-
-    function Bass_Shelf(g, fc, Fs: Double): TFirstOrder;
-    function Treble_Shelf(g, fc, Fs: Double): TFirstOrder;
-
-    function BiQuad(input: Double; ADefilter, ATreble: Boolean): Double;
+    procedure InternalFilter(var AData: TDoubleDynArray; APreFilter: Boolean);
   public
-    bass_level, treb_level: Byte;
+    FreqRespTable: PFFTFreqRespTable;
+    BassLevel, TrebLevel: Byte;
+
+    class procedure BuildFreqRespTable(ASampleRate: Integer; var AFRT: TFFTFreqRespTable);
 
     constructor Create(ASampleRate: Integer); override;
     procedure Init; override;
 
-    procedure Set_Tone_Level(set_bass, set_treb: Byte);
+    procedure SetToneLevel(ABass, ATreb: Byte);
 
     procedure PreFilter_InPlace(var AData: TDoubleDynArray); override;
     procedure DeFilter_InPlace(var AData: TDoubleDynArray); override;
@@ -238,6 +233,10 @@ type
     DstData: TSmallIntDynArray2;
     DCTLut: TDoubleDynArray;
     InvDCTLut: TDoubleDynArray;
+
+{$ifdef ATARI_STE}
+    LMC1992FreqRespTable: TLMC1992Filter.TFFTFreqRespTable;
+{$endif}
 
     Frames: array of TFrame;
 
@@ -395,179 +394,103 @@ end;
 
 { TLMC1992Filter }
 
-function TLMC1992Filter.Bass_Shelf(g, fc, Fs: Double): TFirstOrder;
+procedure TLMC1992Filter.InternalFilter(var AData: TDoubleDynArray; APreFilter: Boolean);
 var
-  sqrt_g, k, k_sqrt_g, k_over_sqrt_g, denom: Double;
+  iBlock, iFFT, blockActualLen: Integer;
+  gain: Double;
+  block: TDoubleDynArray;
+  fft: TComplex1DArray;
 begin
-  // Linear gain and its square root
-  sqrt_g := Sqrt(g);
+  SetLength(fft, CFFTSize);
 
-  // Bilinear transform: K = tan(π × fc / fs)
-  k := Tan(Pi*fc/Fs);
-
-  // Coefficients for H(s) = (s + ω₀×√G) / (s + ω₀/√G)
-  // After bilinear transform:
-  k_sqrt_g := k * sqrt_g;
-  k_over_sqrt_g := k / sqrt_g;
-  denom := 1.0 + k_over_sqrt_g;
-
-  Result.b0 := (1.0 + k_sqrt_g) / denom;
-  Result.b1 := (k_sqrt_g - 1.0) / denom;
-  Result.a1 := (k_over_sqrt_g - 1.0) / denom;
-end;
-
-function TLMC1992Filter.Treble_Shelf(g, fc, Fs: Double): TFirstOrder;
-var
-  sqrt_g, k, k_sqrt_g, denom: Double;
-begin
-  // Linear gain and its square root
-  sqrt_g :=  Sqrt(g);
-
-  // Bilinear transform: K = tan(π × fc / fs)
-  k := Tan(Pi*fc/Fs);
-
-  // First-order high shelf via bilinear transform:
-  // H(s) = (s×√G + ω₀) / (s/√G + ω₀)
-  // After transform with pre-warping:
-  // b0 = √G × (√G + k) / (1 + k×√G)
-  // b1 = √G × (k - √G) / (1 + k×√G)
-  // a1 = (k×√G - 1) / (1 + k×√G)
-  k_sqrt_g := k * sqrt_g;
-  denom := 1.0 + k_sqrt_g;
-
-  Result.b0 := sqrt_g * (sqrt_g + k) / denom;
-  Result.b1 := sqrt_g * (k - sqrt_g) / denom;
-  Result.a1 := (k_sqrt_g - 1.0) / denom;
-end;
-
-function TLMC1992Filter.BiQuad(input: Double; ADefilter, ATreble: Boolean): Double;
-
-  function mul_add(x, a, b: Double): Double;
+  for iBlock := 0 to (Length(AData) - 1) div CFFTSize + 1 - 1 do
   begin
-    Result := x * a + b;
+    block := Copy(AData, iBlock * CFFTSize, CFFTSize);
+
+    blockActualLen := Length(block);
+    SetLength(block, CFFTSize);
+
+    FFTR1D(block, CFFTSize, fft);
+
+    for iFFT := 0 to CFFTSize shr 1 do
+    begin
+      gain := FreqRespTable^[BassLevel, TrebLevel, iFFT];
+
+      if APreFilter then
+        gain := 1.0 / gain;
+
+      fft[iFFT].X *= gain;
+      fft[iFFT].Y *= gain;
+    end;
+
+    FFTR1DInv(fft, CFFTSize, block);
+
+    for iFFT := 0 to blockActualLen - 1 do
+      AData[iBlock * CFFTSize + iFFT] := block[iFFT];
   end;
+end;
 
+class procedure TLMC1992Filter.BuildFreqRespTable(ASampleRate: Integer; var AFRT: TFFTFreqRespTable);
 var
-	output: Double;
+  iBass, iTreb, iFFR, nbPoints, frIdx: Integer;
+  fftFreq, fftGain: Double;
+  fs: TFileStream;
+  fResp: TSpiceFreqResp;
 begin
-  output := mul_add(coef[ADefilter, ATreble].b0, input, mul_add(coef[ADefilter, ATreble].b1, data[ADefilter, ATreble].x1, -coef[ADefilter, ATreble].a1 * data[ADefilter, ATreble].y1));
-  data[ADefilter, ATreble].x1 := input;
-  data[ADefilter, ATreble].y1 := output;
+  fs := TFileStream.Create(ExtractFilePath(ParamStr(0)) + 'lmc1992.dat', fmOpenRead or fmShareDenyNone);
+  try
+    for iBass := 0 to CToneSteps - 1 do
+      for iTreb := 0 to CToneSteps - 1 do
+      begin
+        nbPoints := fs.ReadDWord;
+        SetLength(fResp, nbPoints);
 
-  Result := output;
+        fs.Read(fResp[0], nbPoints * SizeOf(TSpiceFreqRespPoint));
+
+        frIdx := 0;
+        for iFFR := 0 to CFFTSize shr 1 do
+        begin
+          fftFreq := iFFR * ASampleRate / CFFTSize;
+
+          while (frIdx < nbPoints - 1) and (fResp[frIdx].Frequency < fftFreq) do
+            Inc(frIdx);
+
+          fftGain := fResp[frIdx].Gain;
+
+          AFRT[iBass, iTreb, iFFR] := fftGain;
+        end;
+      end;
+  finally
+    fs.Free;
+  end;
 end;
 
 constructor TLMC1992Filter.Create(ASampleRate: Integer);
-var
-	dB_adjusted, dB, g, fc_bt, fc_tt, Fs: Double;
-	n: Integer;
-	bass, treb: TFirstOrder;
 begin
   inherited Create(ASampleRate);
 
-  fc_bt := 118.2763 * Pi; //TODO: Gli: why Pi there to get something close to the hw?
-  fc_tt := 8438.756 * Sqrt(2.0) / 2.0; //TODO: Gli: why Sqrt(2.0) / 2.0 there to get something close to the hw?
-  Fs := sampleRate;
-
-  if fc_tt > 0.5*Fs then
-  begin
-    fc_tt := 0.5*Fs;
-    dB_adjusted := 2.0 * 0.5*Fs/fc_tt;
-  end
-  else
-  begin
-    dB_adjusted := 2.0;
-  end;
-
-  dB := dB_adjusted*(TONE_STEPS-1)/2;
-  for n := TONE_STEPS - 1 downto 0 do
-  begin
-    g := Power(10.0, dB/20.0);	// 12dB to -12dB
-
-    treb := Treble_Shelf(g, fc_tt, Fs);
-
-    treb_table[n].a1 := treb.a1;
-    treb_table[n].b0 := treb.b0;
-    treb_table[n].b1 := treb.b1;
-
-    dB -= dB_adjusted;
-  end;
-
-  dB := 12.0;
-  for n := TONE_STEPS - 1 downto 0 do
-  begin
-  	g := Power(10.0, dB/20.0);	// 12dB to -12dB
-
-  	bass := Bass_Shelf(g, fc_bt, Fs);
-
-  	bass_table[n].a1 := bass.a1;
-  	bass_table[n].b0 := bass.b0;
-  	bass_table[n].b1 := bass.b1;
-
-    dB -= 2.0;
-  end;
-
-  Set_Tone_Level(NEUTRAL_TONE, NEUTRAL_TONE); // no bass / treble boost
+  SetToneLevel(CNeutralTone, CNeutralTone); // no bass / treble boost
 end;
 
 procedure TLMC1992Filter.Init;
-var
-  de, tr: Boolean;
 begin
-  for de := False to True do
-    for tr := False to True do
-    begin
-      data[de, tr].x1 := 0.0;
-      data[de, tr].y1 := 0.0;
-    end;
+  // nothing
 end;
 
 procedure TLMC1992Filter.PreFilter_InPlace(var AData: TDoubleDynArray);
-var
-  iData: Integer;
-  tr: Boolean;
-  s: Double;
 begin
-  for iData := 0 to High(AData) do
-  begin
-    s := AData[iData];
-    for tr := False to True do
-      s := BiQuad(s, False, tr);
-    AData[iData] := s;
-  end;
+  InternalFilter(AData, True);
 end;
 
 procedure TLMC1992Filter.DeFilter_InPlace(var AData: TDoubleDynArray);
-var
-  iData: Integer;
-  tr: Boolean;
-  s: Double;
 begin
-  for iData := 0 to High(AData) do
-  begin
-    s := AData[iData];
-    for tr := False to True do
-      s := BiQuad(s, True, tr);
-    AData[iData] := s;
-  end;
+  InternalFilter(AData, False);
 end;
 
-procedure TLMC1992Filter.Set_Tone_Level(set_bass, set_treb: Byte);
-var
-  de: Boolean;
+procedure TLMC1992Filter.SetToneLevel(ABass, ATreb: Byte);
 begin
-  bass_level := set_bass;
-  treb_level := set_treb;
-
-  for de := True downto False do
-  begin
-    // 13 levels; 0 through 12 correspond with -12dB to 12dB in 2dB steps
-    coef[de, False] := bass_table[set_bass];
-    coef[de, True] := treb_table[set_treb];
-
-    set_bass := TONE_STEPS - 1 - set_bass;
-    set_treb := TONE_STEPS - 1 - set_treb;
-  end;
+  BassLevel := ABass;
+  TrebLevel := ATreb;
 end;
 
 { TPiggyCoder }
@@ -1010,7 +933,7 @@ begin
       srcFirstSample[iChannel] := TEncoder.makeFloatSample(encoder.SrcData[iChannel, StartSample - 1]);
 
     tmpSmp[0] := srcFirstSample[iChannel];
-    filter[iChannel].PreFilter(tmpSmp);
+    filter[iChannel].PreFilter_InPlace(tmpSmp);
 
     for iSample := 0 to SampleCount - 1 do
       srcData[iChannel, iSample] := TEncoder.makeFloatSample(encoder.SrcData[iChannel, StartSample + iSample]);
@@ -1280,7 +1203,7 @@ begin
 {$ifdef ATARI_STE}
   Assert(reducedChunks.Count - 1 <= High(Byte));
   AStream.WriteByte(reducedChunks.Count - 1);
-  AStream.WriteByte((TLMC1992Filter(filter[0]).bass_level shl 4) or TLMC1992Filter(filter[0]).treb_level);
+  AStream.WriteByte((TLMC1992Filter(filter[0]).BassLevel shl 4) or TLMC1992Filter(filter[0]).TrebLevel);
 
   Assert(encoder.ChunkBitDepth = 8, 'ChunkBitDepth not supported');
   cl := reducedChunks;
@@ -1369,12 +1292,12 @@ end;
 procedure TFrame.SolveCompandingFilterSettings;
 var
   iChannel, iSample, iTreb, bestTreb: Integer;
-  bass_level: Byte;
+  bassLevel: Byte;
   v, best: Double;
   ref: TDoubleDynArray2;
 begin
 {$ifdef ATARI_STE}
-  bass_level := TLMC1992Filter(filter[0]).bass_level;
+  bassLevel := TLMC1992Filter(filter[0]).BassLevel;
 
   SetLength(ref, encoder.ChannelCount, SampleCount);
 
@@ -1385,10 +1308,10 @@ begin
   bestTreb := -1;
   best := Infinity;
 
-  for iTreb := 0 to TLMC1992Filter.TONE_STEPS - 1 do
+  for iTreb := 0 to TLMC1992Filter.CToneSteps - 1 do
   begin
     for iChannel := 0 to encoder.ChannelCount - 1 do
-      TLMC1992Filter(filter[iChannel]).Set_Tone_Level(bass_level, iTreb);
+      TLMC1992Filter(filter[iChannel]).SetToneLevel(bassLevel, iTreb);
 
     MakeFrame(False);
 
@@ -1405,7 +1328,7 @@ begin
   end;
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
-    TLMC1992Filter(filter[iChannel]).Set_Tone_Level(bass_level, bestTreb);
+    TLMC1992Filter(filter[iChannel]).SetToneLevel(bassLevel, bestTreb);
 
   MakeFrame;
   //WriteLn(index:4, bestTreb:4, best * High(SmallInt) / (SampleCount * encoder.ChannelCount):12:3);
@@ -1432,7 +1355,7 @@ begin
     pos[iChannel] := 0;
     filter[iChannel].Init;
     tmpSmp[0] := srcFirstSample[iChannel];
-    filter[iChannel].DeFilter(tmpSmp);
+    filter[iChannel].DeFilter_InPlace(tmpSmp);
   end;
 
   for iChunk := 0 to plainChunks.Count - 1 do
@@ -1617,7 +1540,7 @@ end;
 procedure TEncoder.PrepareFrames;
 const
   CAttenuationMilliseconds = 2.0;
-  CVariableCodingRatio = 0.7;
+  CVariableCodingRatio = 0.85;
 var
   iChannel, iSample, frmIdx, nextStart, psc, tentativeByteSize: Integer;
   headerCost, chunksCost, indexingCost: Double;
@@ -1629,6 +1552,10 @@ begin
   WriteLn('[PrepareFrames]');
 
   // pass 1
+
+{$ifdef ATARI_STE}
+  TLMC1992Filter.BuildFreqRespTable(SampleRate, LMC1992FreqRespTable);
+{$endif}
 
   SetLength(DCTLut, Sqr(ChunkSize));
   SetLength(InvDCTLut, Sqr(ChunkSize));
@@ -1815,7 +1742,7 @@ begin
   PiggyCodingBlocksBits := 1;
   PiggyCodingSolveByValue := True;
   NoSolveFilterSettings := False;
-  GainFactor := Power(10.0, -4.5 / 20.0);
+  GainFactor := Power(10.0, -6 / 20.0);
 {$else}
   ChunkSize := 4;
   ChunksPerAttenuation := 16;
@@ -1859,7 +1786,8 @@ function TEncoder.CreateEmphasisFilter: TEmphasisFilter;
 begin
 {$ifdef ATARI_STE}
   Result := TLMC1992Filter.Create(SampleRate);
-  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.NEUTRAL_TONE + 3, TLMC1992Filter.NEUTRAL_TONE - 6);
+  TLMC1992Filter(Result).SetToneLevel(TLMC1992Filter.CNeutralTone + 3, TLMC1992Filter.CNeutralTone - 3);
+  TLMC1992Filter(Result).FreqRespTable := @LMC1992FreqRespTable;
 {$else}
   Result := TDeltaFilter.Create(SampleRate);
 {$endif}
