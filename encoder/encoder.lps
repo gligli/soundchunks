@@ -3,14 +3,14 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Active="Release"/>
+    <BuildModes Active="Release_Atari_STe"/>
     <Units Count="14">
       <Unit0>
         <Filename Value="encoder.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
-        <CursorPos X="21" Y="10"/>
+        <CursorPos X="17" Y="24"/>
         <UsageCount Value="200"/>
         <Bookmarks Count="3">
           <Item0 Y="1961" ID="3"/>
@@ -43,11 +43,10 @@
       </Unit3>
       <Unit4>
         <Filename Value="alglib\conv.pas"/>
-        <EditorIndex Value="2"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="18"/>
         <CursorPos X="11" Y="46"/>
         <UsageCount Value="198"/>
-        <Loaded Value="True"/>
       </Unit4>
       <Unit5>
         <Filename Value="orthogonal_kmeans.pas"/>
