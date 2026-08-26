@@ -4,7 +4,7 @@ program encoder;
 
 uses
   windows, Classes, sysutils, strutils, Types, fgl, math,
-  extern, mtpool, ap, fft;
+  extern, mtpool;
 
 const
   CStreamVersion = 6;
@@ -36,14 +36,8 @@ type
   public
     constructor Create(ASampleRate: Integer); virtual;
     procedure Init; virtual; abstract;
-
-    procedure PreFilter_InPlace(var AData: TDoubleDynArray); virtual; abstract;
-    procedure DeFilter_InPlace(var AData: TDoubleDynArray); virtual; abstract;
-
-    function PreFilter(const AData: TSmallIntDynArray): TDoubleDynArray; overload;
-    function DeFilter(const AData: TSmallIntDynArray): TDoubleDynArray; overload;
-    function PreFilter(const AData: TDoubleDynArray): TDoubleDynArray; overload;
-    function DeFilter(const AData: TDoubleDynArray): TDoubleDynArray; overload;
+    function PreFilter(s: Double): Double; virtual; abstract;
+    function DeFilter(s: Double): Double; virtual; abstract;
   end;
 
   { TDeltaFilter }
@@ -54,9 +48,8 @@ type
     accSample: Double;
   public
     procedure Init; override;
-
-    procedure PreFilter_InPlace(var AData: TDoubleDynArray); override;
-    procedure DeFilter_InPlace(var AData: TDoubleDynArray); override;
+    function PreFilter(s: Double): Double; override;
+    function DeFilter(s: Double): Double; override;
   end;
 
   { TLMC1992Filter }
@@ -65,31 +58,35 @@ type
   // updated with code from https://docs.rs/ym2149-sndh-replayer/latest/src/ym2149_sndh_replayer/lmc1992.rs.html
   TLMC1992Filter = class(TEmphasisFilter)
   const
-    CToneSteps = 13;
-    CNeutralTone = 6;
-    CFFTSize = 4096;
+    TONE_STEPS = 13;
+    NEUTRAL_TONE = 6;
   type
-    TSpiceFreqRespPoint = packed record
-      Frequency, Gain: Single;
+    TFirstOrder = record
+      a1, b0, b1: Double;
     end;
-    TSpiceFreqResp = array of TSpiceFreqRespPoint;
-    TFFTFreqRespTable = array[0 .. CToneSteps - 1 {bass}, 0 .. CToneSteps - 1 {treb}, 0 .. CFFTSize shr 1] of Double;
-    PFFTFreqRespTable = ^TFFTFreqRespTable;
   private
-    procedure InternalFilter(var AData: TDoubleDynArray; APreFilter: Boolean);
-  public
-    FreqRespTable: PFFTFreqRespTable;
-    BassLevel, TrebLevel: Byte;
+    bass_table: array[0 .. TONE_STEPS - 1] of TFirstOrder;
+    treb_table: array[0 .. TONE_STEPS - 1] of TFirstOrder;
 
-    class procedure BuildFreqRespTable(ASampleRate: Integer; var AFRT: TFFTFreqRespTable);
+    coef: array[Boolean{DeFilter?}, Boolean{treble?}] of TFirstOrder;
+
+    data: array[Boolean{DeFilter?}, Boolean{treble?}] of record
+      x1, y1: Double;
+    end;
+
+    function Bass_Shelf(g, fc, Fs: Double): TFirstOrder;
+    function Treble_Shelf(g, fc, Fs: Double): TFirstOrder;
+
+    function BiQuad(input: Double; ADefilter, ATreble: Boolean): Double;
+  public
+    bass_level, treb_level: Byte;
 
     constructor Create(ASampleRate: Integer); override;
     procedure Init; override;
+    function PreFilter(s: Double): Double; override;
+    function DeFilter(s: Double): Double; override;
 
-    procedure SetToneLevel(ABass, ATreb: Byte);
-
-    procedure PreFilter_InPlace(var AData: TDoubleDynArray); override;
-    procedure DeFilter_InPlace(var AData: TDoubleDynArray); override;
+    procedure Set_Tone_Level(set_bass, set_treb: Byte);
   end;
 
   { TPiggyCoder }
@@ -231,12 +228,6 @@ type
     SrcHeader: array[$00..$2b] of Byte;
     SrcData: TSmallIntDynArray2;
     DstData: TSmallIntDynArray2;
-    DCTLut: TDoubleDynArray;
-    InvDCTLut: TDoubleDynArray;
-
-{$ifdef ATARI_STE}
-    LMC1992FreqRespTable: TLMC1992Filter.TFFTFreqRespTable;
-{$endif}
 
     Frames: array of TFrame;
 
@@ -248,14 +239,12 @@ type
     class function makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean; gain: Double): Double;
     class function SolveAttenuation(chunkSz: Integer; samples: PDouble): Byte;
     class function ComputeAttenuation(Attenuation: Integer): Double;
-    class procedure ComputeDCTLut(chunkSz: Integer; lut: PDouble);
-    class procedure ComputeInvDCTLut(chunkSz: Integer; lut: PDouble);
+    class procedure ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
+    class procedure ComputeInvDCT(chunkSz: Integer; dct, samples: PDouble);
     class function CompareEuclidean(const dctA, dctB: TDoubleDynArray): Double; overload;
     class function CompareMuLawManhattan(const dctA, dctB: TDoubleDynArray): TPsyADelta;
     class function ComputePsyADelta(const smpRef, smpTst: TSmallIntDynArray2): TPsyADelta;
     class procedure createWAV(channels: word; resolution: word; rate: longint; fn: string; const data: TSmallIntDynArray);
-
-    class procedure ConvolveDCT(chunkSz: Integer; input, output, lut: PDouble);
 
     constructor Create(InFN, OutFN: String);
     destructor Destroy; override;
@@ -303,59 +292,9 @@ begin
   Result := StrToFloatDef(copy(ParamStr(idx), Length(p) + 1), def);
 end;
 
-{ TEmphasisFilter }
-
 constructor TEmphasisFilter.Create(ASampleRate: Integer);
 begin
   sampleRate := ASampleRate;
-end;
-
-function TEmphasisFilter.PreFilter(const AData: TSmallIntDynArray): TDoubleDynArray;
-var
-  iData: Integer;
-begin
-  SetLength(Result, Length(AData));
-
-  for iData := 0 to High(AData) do
-    Result[iData] := AData[iData];
-
-  PreFilter_InPlace(Result);
-end;
-
-function TEmphasisFilter.DeFilter(const AData: TSmallIntDynArray): TDoubleDynArray;
-var
-  iData: Integer;
-begin
-  SetLength(Result, Length(AData));
-
-  for iData := 0 to High(AData) do
-    Result[iData] := AData[iData];
-
-  DeFilter_InPlace(Result);
-end;
-
-function TEmphasisFilter.PreFilter(const AData: TDoubleDynArray): TDoubleDynArray;
-var
-  iData: Integer;
-begin
-  SetLength(Result, Length(AData));
-
-  for iData := 0 to High(AData) do
-    Result[iData] := AData[iData];
-
-  PreFilter_InPlace(Result);
-end;
-
-function TEmphasisFilter.DeFilter(const AData: TDoubleDynArray): TDoubleDynArray;
-var
-  iData: Integer;
-begin
-  SetLength(Result, Length(AData));
-
-  for iData := 0 to High(AData) do
-    Result[iData] := AData[iData];
-
-  DeFilter_InPlace(Result);
 end;
 
 { TDeltaFilter }
@@ -366,131 +305,181 @@ begin
   accSample := 0.0;
 end;
 
-procedure TDeltaFilter.PreFilter_InPlace(var AData: TDoubleDynArray);
-var
-  iData: Integer;
-  s: Double;
+function TDeltaFilter.PreFilter(s: Double): Double;
 begin
-  for iData := 0 to High(AData) do
-  begin
-    s := AData[iData];
-    AData[iData] := s - prevSample;
-    prevSample := s;
-  end;
+  Result := s - prevSample;
+  prevSample := s;
 end;
 
-procedure TDeltaFilter.DeFilter_InPlace(var AData: TDoubleDynArray);
-var
-  iData: Integer;
-  s: Double;
+function TDeltaFilter.DeFilter(s: Double): Double;
 begin
-  for iData := 0 to High(AData) do
-  begin
-    s := AData[iData];
-    accSample += s;
-    AData[iData] := accSample;
-  end;
+  accSample += s;
+  Result := accSample;
 end;
 
 { TLMC1992Filter }
 
-procedure TLMC1992Filter.InternalFilter(var AData: TDoubleDynArray; APreFilter: Boolean);
+function TLMC1992Filter.Bass_Shelf(g, fc, Fs: Double): TFirstOrder;
 var
-  iBlock, iFFT, blockActualLen: Integer;
-  gain: Double;
-  block: TDoubleDynArray;
-  fft: TComplex1DArray;
+  sqrt_g, k, k_sqrt_g, k_over_sqrt_g, denom: Double;
 begin
-  SetLength(fft, CFFTSize);
+  // Linear gain and its square root
+  sqrt_g := Sqrt(g);
 
-  for iBlock := 0 to (Length(AData) - 1) div CFFTSize + 1 - 1 do
-  begin
-    block := Copy(AData, iBlock * CFFTSize, CFFTSize);
+  // Bilinear transform: K = tan(π × fc / fs)
+  k := Tan(Pi*fc/Fs);
 
-    blockActualLen := Length(block);
-    SetLength(block, CFFTSize);
+  // Coefficients for H(s) = (s + ω₀×√G) / (s + ω₀/√G)
+  // After bilinear transform:
+  k_sqrt_g := k * sqrt_g;
+  k_over_sqrt_g := k / sqrt_g;
+  denom := 1.0 + k_over_sqrt_g;
 
-    FFTR1D(block, CFFTSize, fft);
-
-    for iFFT := 0 to CFFTSize shr 1 do
-    begin
-      gain := FreqRespTable^[BassLevel, TrebLevel, iFFT];
-
-      if APreFilter then
-        gain := 1.0 / gain;
-
-      fft[iFFT].X *= gain;
-      fft[iFFT].Y *= gain;
-    end;
-
-    FFTR1DInv(fft, CFFTSize, block);
-
-    for iFFT := 0 to blockActualLen - 1 do
-      AData[iBlock * CFFTSize + iFFT] := block[iFFT];
-  end;
+  Result.b0 := (1.0 + k_sqrt_g) / denom;
+  Result.b1 := (k_sqrt_g - 1.0) / denom;
+  Result.a1 := (k_over_sqrt_g - 1.0) / denom;
 end;
 
-class procedure TLMC1992Filter.BuildFreqRespTable(ASampleRate: Integer; var AFRT: TFFTFreqRespTable);
+function TLMC1992Filter.Treble_Shelf(g, fc, Fs: Double): TFirstOrder;
 var
-  iBass, iTreb, iFFR, nbPoints, frIdx: Integer;
-  fftFreq, fftGain: Double;
-  fs: TFileStream;
-  fResp: TSpiceFreqResp;
+  sqrt_g, k, k_sqrt_g, denom: Double;
 begin
-  fs := TFileStream.Create(ExtractFilePath(ParamStr(0)) + 'lmc1992.dat', fmOpenRead or fmShareDenyNone);
-  try
-    for iBass := 0 to CToneSteps - 1 do
-      for iTreb := 0 to CToneSteps - 1 do
-      begin
-        nbPoints := fs.ReadDWord;
-        SetLength(fResp, nbPoints);
+  // Linear gain and its square root
+  sqrt_g :=  Sqrt(g);
 
-        fs.Read(fResp[0], nbPoints * SizeOf(TSpiceFreqRespPoint));
+  // Bilinear transform: K = tan(π × fc / fs)
+  k := Tan(Pi*fc/Fs);
 
-        frIdx := 0;
-        for iFFR := 0 to CFFTSize shr 1 do
-        begin
-          fftFreq := iFFR * ASampleRate / CFFTSize;
+  // First-order high shelf via bilinear transform:
+  // H(s) = (s×√G + ω₀) / (s/√G + ω₀)
+  // After transform with pre-warping:
+  // b0 = √G × (√G + k) / (1 + k×√G)
+  // b1 = √G × (k - √G) / (1 + k×√G)
+  // a1 = (k×√G - 1) / (1 + k×√G)
+  k_sqrt_g := k * sqrt_g;
+  denom := 1.0 + k_sqrt_g;
 
-          while (frIdx < nbPoints - 1) and (fResp[frIdx].Frequency < fftFreq) do
-            Inc(frIdx);
+  Result.b0 := sqrt_g * (sqrt_g + k) / denom;
+  Result.b1 := sqrt_g * (k - sqrt_g) / denom;
+  Result.a1 := (k_sqrt_g - 1.0) / denom;
+end;
 
-          fftGain := fResp[frIdx].Gain;
+function TLMC1992Filter.BiQuad(input: Double; ADefilter, ATreble: Boolean): Double;
 
-          AFRT[iBass, iTreb, iFFR] := fftGain;
-        end;
-      end;
-  finally
-    fs.Free;
+  function mul_add(x, a, b: Double): Double;
+  begin
+    Result := x * a + b;
   end;
+
+var
+	output: Double;
+begin
+  output := mul_add(coef[ADefilter, ATreble].b0, input, mul_add(coef[ADefilter, ATreble].b1, data[ADefilter, ATreble].x1, -coef[ADefilter, ATreble].a1 * data[ADefilter, ATreble].y1));
+  data[ADefilter, ATreble].x1 := input;
+  data[ADefilter, ATreble].y1 := output;
+
+  Result := output;
 end;
 
 constructor TLMC1992Filter.Create(ASampleRate: Integer);
+var
+	dB_adjusted, dB, g, fc_bt, fc_tt, Fs: Double;
+	n: Integer;
+	bass, treb: TFirstOrder;
 begin
   inherited Create(ASampleRate);
 
-  SetToneLevel(CNeutralTone, CNeutralTone); // no bass / treble boost
+  fc_bt := 118.2763 * Pi; //TODO: Gli: why Pi there to get something close to the hw?
+  fc_tt := 8438.756 * Sqrt(2.0) / 2.0; //TODO: Gli: why Sqrt(2.0) / 2.0 there to get something close to the hw?
+  Fs := sampleRate;
+
+  if fc_tt > 0.5*Fs then
+  begin
+    fc_tt := 0.5*Fs;
+    dB_adjusted := 2.0 * 0.5*Fs/fc_tt;
+  end
+  else
+  begin
+    dB_adjusted := 2.0;
+  end;
+
+  dB := dB_adjusted*(TONE_STEPS-1)/2;
+  for n := TONE_STEPS - 1 downto 0 do
+  begin
+    g := Power(10.0, dB/20.0);	// 12dB to -12dB
+
+    treb := Treble_Shelf(g, fc_tt, Fs);
+
+    treb_table[n].a1 := treb.a1;
+    treb_table[n].b0 := treb.b0;
+    treb_table[n].b1 := treb.b1;
+
+    dB -= dB_adjusted;
+  end;
+
+  dB := 12.0;
+  for n := TONE_STEPS - 1 downto 0 do
+  begin
+  	g := Power(10.0, dB/20.0);	// 12dB to -12dB
+
+  	bass := Bass_Shelf(g, fc_bt, Fs);
+
+  	bass_table[n].a1 := bass.a1;
+  	bass_table[n].b0 := bass.b0;
+  	bass_table[n].b1 := bass.b1;
+
+    dB -= 2.0;
+  end;
+
+  Set_Tone_Level(NEUTRAL_TONE, NEUTRAL_TONE); // no bass / treble boost
 end;
 
 procedure TLMC1992Filter.Init;
+var
+  de, tr: Boolean;
 begin
-  // nothing
+  for de := False to True do
+    for tr := False to True do
+    begin
+      data[de, tr].x1 := 0.0;
+      data[de, tr].y1 := 0.0;
+    end;
 end;
 
-procedure TLMC1992Filter.PreFilter_InPlace(var AData: TDoubleDynArray);
+function TLMC1992Filter.PreFilter(s: Double): Double;
+var
+  tr: Boolean;
 begin
-  InternalFilter(AData, True);
+  Result := s;
+  for tr := False to True do
+    Result := BiQuad(Result, False, tr);
 end;
 
-procedure TLMC1992Filter.DeFilter_InPlace(var AData: TDoubleDynArray);
+function TLMC1992Filter.DeFilter(s: Double): Double;
+var
+  tr: Boolean;
 begin
-  InternalFilter(AData, False);
+  Result := s;
+  for tr := False to True do
+    Result := BiQuad(Result, True, tr);
 end;
 
-procedure TLMC1992Filter.SetToneLevel(ABass, ATreb: Byte);
+procedure TLMC1992Filter.Set_Tone_Level(set_bass, set_treb: Byte);
+var
+  de: Boolean;
 begin
-  BassLevel := ABass;
-  TrebLevel := ATreb;
+  bass_level := set_bass;
+  treb_level := set_treb;
+
+  for de := True downto False do
+  begin
+    // 13 levels; 0 through 12 correspond with -12dB to 12dB in 2dB steps
+    coef[de, False] := bass_table[set_bass];
+    coef[de, True] := treb_table[set_treb];
+
+    set_bass := TONE_STEPS - 1 - set_bass;
+    set_treb := TONE_STEPS - 1 - set_treb;
+  end;
 end;
 
 { TPiggyCoder }
@@ -822,7 +811,7 @@ begin
     data[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, frame.encoder.ChunkSize - 1 - iSample, iSample)], 2, dstAttenuation, dstNegative, 1.0).AsDouble;
 
   SetLength(Result, frame.encoder.ChunkSize);
-  TEncoder.ConvolveDCT(Length(data), @data[0], @Result[0], @frame.encoder.DCTLut[0]);
+  TEncoder.ComputeDCT(Length(data), @data[0], @Result[0]);
 end;
 
 procedure TChunk.ComputeFromFeatures(AFeatures: PDouble);
@@ -831,7 +820,7 @@ var
   data: TDoubleDynArray;
 begin
   SetLength(data, frame.encoder.ChunkSize);
-  TEncoder.ConvolveDCT(frame.encoder.ChunkSize, @AFeatures[0], @data[0], @frame.encoder.InvDCTLut[0]);
+  TEncoder.ComputeInvDCT(frame.encoder.ChunkSize, @AFeatures[0], @data[0]);
 
   SetLength(dstData, frame.encoder.ChunkSize);
   for iSample := 0 to High(data) do
@@ -917,28 +906,24 @@ end;
 procedure TFrame.MakeChunks;
 var
   iSample, iChannel, iChunk: Integer;
+  smp: Double;
   chunk: TChunk;
-  tmpSmp: TDoubleDynArray;
 begin
   SetLength(srcFirstSample, encoder.ChannelCount);
   SetLength(srcData, encoder.ChannelCount, SampleCount);
-  SetLength(tmpSmp, 1);
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
   begin
-    filter[iChannel].Init;
-
     srcFirstSample[iChannel] := 0.0;
     if StartSample > 0 then
       srcFirstSample[iChannel] := TEncoder.makeFloatSample(encoder.SrcData[iChannel, StartSample - 1]);
-
-    tmpSmp[0] := srcFirstSample[iChannel];
-    filter[iChannel].PreFilter_InPlace(tmpSmp);
-
+    filter[iChannel].Init;
+    filter[iChannel].PreFilter(srcFirstSample[iChannel]);
     for iSample := 0 to SampleCount - 1 do
-      srcData[iChannel, iSample] := TEncoder.makeFloatSample(encoder.SrcData[iChannel, StartSample + iSample]);
-
-    filter[iChannel].PreFilter_InPlace(srcData[iChannel]);
+    begin
+      smp := TEncoder.makeFloatSample(encoder.SrcData[iChannel, StartSample + iSample]);
+      srcData[iChannel, iSample] := filter[iChannel].PreFilter(smp);
+    end;
   end;
 
   reducedChunks.Clear;
@@ -1137,7 +1122,7 @@ begin
 
     for iDS := 0 to 3 do
     begin
-      TEncoder.ConvolveDCT(encoder.ChunkSize, @Dataset[dsIdx, encoder.chunkSize], @Dataset[dsIdx, 0], @encoder.DCTLut[0]);
+      TEncoder.ComputeDCT(encoder.ChunkSize, @Dataset[dsIdx, encoder.chunkSize], @Dataset[dsIdx, 0]);
       Inc(dsIdx);
     end;
   end;
@@ -1159,7 +1144,7 @@ begin
       for iSample := 0 to encoder.ChunkSize - 1 do
         query[encoder.chunkSize + iSample] := (chunk.srcData[iSample] - skew) * attCoeff;
 
-      TEncoder.ConvolveDCT(encoder.ChunkSize, @query[encoder.chunkSize], @query[0], @encoder.DCTLut[0]);
+      TEncoder.ComputeDCT(encoder.ChunkSize, @query[encoder.chunkSize], @query[0]);
 
       bestIdx := ann_kdtree_search(KDT, @query[0], 0.0, @bestErr);
 
@@ -1203,7 +1188,7 @@ begin
 {$ifdef ATARI_STE}
   Assert(reducedChunks.Count - 1 <= High(Byte));
   AStream.WriteByte(reducedChunks.Count - 1);
-  AStream.WriteByte((TLMC1992Filter(filter[0]).BassLevel shl 4) or TLMC1992Filter(filter[0]).TrebLevel);
+  AStream.WriteByte((TLMC1992Filter(filter[0]).bass_level shl 4) or TLMC1992Filter(filter[0]).treb_level);
 
   Assert(encoder.ChunkBitDepth = 8, 'ChunkBitDepth not supported');
   cl := reducedChunks;
@@ -1292,12 +1277,12 @@ end;
 procedure TFrame.SolveCompandingFilterSettings;
 var
   iChannel, iSample, iTreb, bestTreb: Integer;
-  bassLevel: Byte;
+  bass_level: Byte;
   v, best: Double;
   ref: TDoubleDynArray2;
 begin
 {$ifdef ATARI_STE}
-  bassLevel := TLMC1992Filter(filter[0]).BassLevel;
+  bass_level := TLMC1992Filter(filter[0]).bass_level;
 
   SetLength(ref, encoder.ChannelCount, SampleCount);
 
@@ -1308,10 +1293,10 @@ begin
   bestTreb := -1;
   best := Infinity;
 
-  for iTreb := 0 to TLMC1992Filter.CToneSteps - 1 do
+  for iTreb := 0 to TLMC1992Filter.TONE_STEPS - 1 do
   begin
     for iChannel := 0 to encoder.ChannelCount - 1 do
-      TLMC1992Filter(filter[iChannel]).SetToneLevel(bassLevel, iTreb);
+      TLMC1992Filter(filter[iChannel]).Set_Tone_Level(bass_level, iTreb);
 
     MakeFrame(False);
 
@@ -1328,7 +1313,7 @@ begin
   end;
 
   for iChannel := 0 to encoder.ChannelCount - 1 do
-    TLMC1992Filter(filter[iChannel]).SetToneLevel(bassLevel, bestTreb);
+    TLMC1992Filter(filter[iChannel]).Set_Tone_Level(bass_level, bestTreb);
 
   MakeFrame;
   //WriteLn(index:4, bestTreb:4, best * High(SmallInt) / (SampleCount * encoder.ChannelCount):12:3);
@@ -1342,20 +1327,15 @@ var
   smp: Double;
   pos: TIntegerDynArray;
   piggyCodes: TPiggyCoder.TCodeArray;
-  tmpSmp: TDoubleDynArray;
 begin
-  // audio
-
   SetLength(pos, encoder.ChannelCount);
   SetLength(dstData, encoder.ChannelCount, SampleCount);
-  SetLength(tmpSmp, 1);
   for iChannel := 0 to encoder.ChannelCount - 1 do
   begin
     FillQWord(dstData[iChannel, 0], SampleCount, 0);
     pos[iChannel] := 0;
     filter[iChannel].Init;
-    tmpSmp[0] := srcFirstSample[iChannel];
-    filter[iChannel].DeFilter_InPlace(tmpSmp);
+    filter[iChannel].DeFilter(srcFirstSample[iChannel]);
   end;
 
   for iChunk := 0 to plainChunks.Count - 1 do
@@ -1367,16 +1347,11 @@ begin
       smp := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, encoder.ChunkSize - 1 - iSample, iSample)], encoder.ChunkBitDepth, chunk.dstAttenuation, chunk.dstNegative, encoder.GainFactor);
 
       if InRange(pos[chunk.channel], 0, High(dstData[chunk.channel])) then
-        dstData[chunk.channel, pos[chunk.channel]] := smp;
+        dstData[chunk.channel, pos[chunk.channel]] := filter[chunk.channel].DeFilter(smp);
 
       Inc(pos[chunk.channel]);
     end;
   end;
-
-  for iChannel := 0 to encoder.ChannelCount - 1 do
-    filter[iChannel].DeFilter_InPlace(dstData[iChannel]);
-
-  // bitcode
 
   SetLength(piggyCodes, plainChunks.Count);
   for iChunk := 0 to plainChunks.Count - 1 do
@@ -1540,27 +1515,17 @@ end;
 procedure TEncoder.PrepareFrames;
 const
   CAttenuationMilliseconds = 2.0;
-  CVariableCodingRatio = 0.85;
+  CVariableCodingRatio = 0.7;
 var
   iChannel, iSample, frmIdx, nextStart, psc, tentativeByteSize: Integer;
+  frm: TFrame;
   headerCost, chunksCost, indexingCost: Double;
   totalPower, perFramePower, curPower, smp: Double;
-  flt: TEmphasisFilter;
-  frm: TFrame;
-  fltSmp: TDoubleDynArray2;
+  flt: array of TEmphasisFilter;
 begin
   WriteLn('[PrepareFrames]');
 
   // pass 1
-
-{$ifdef ATARI_STE}
-  TLMC1992Filter.BuildFreqRespTable(SampleRate, LMC1992FreqRespTable);
-{$endif}
-
-  SetLength(DCTLut, Sqr(ChunkSize));
-  SetLength(InvDCTLut, Sqr(ChunkSize));
-  ComputeDCTLut(ChunkSize, @DCTLut[0]);
-  ComputeInvDCTLut(ChunkSize, @InvDCTLut[0]);
 
 {$ifdef ATARI_STE}
   ChunksPerAttenuation := Max(1, Round(ChunksPerAttenuation / AttenuationChunkRatioMul));
@@ -1637,72 +1602,72 @@ begin
 
   // pass 2
 
-  SetLength(fltSmp, ChannelCount);
+  SetLength(flt, ChannelCount);
   for iChannel := 0 to ChannelCount - 1 do
-  begin
-    flt := CreateEmphasisFilter;
-    try
-      fltSmp[iChannel] := flt.PreFilter(SrcData[iChannel]);
-    finally
-      flt.Free;
-    end;
-  end;
-
-  totalPower := 0;
-  for iSample := 0 to SampleCount - 1 do
-  begin
-    smp := 0;
-    for iChannel := 0 to ChannelCount - 1 do
-      smp += Sqr(fltSmp[iChannel, iSample]);
-    smp := Sqrt(smp / ChannelCount);
-
-    totalPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
-  end;
-
-  perFramePower := totalPower / FrameCount;
-
-  if Verbose then
-  begin
-    writeln('TotalPower = ', totalPower / High(SmallInt):12:3);
-    writeln('PerFramePower = ', perFramePower / High(SmallInt):12:3);
-  end;
-
-  frmIdx := 0;
-  nextStart := 0;
-  curPower := 0;
-  SetLength(Frames, FrameCount);
-  for iSample := 0 to SampleCount - 1 do
-  begin
-    smp := 0;
-    for iChannel := 0 to ChannelCount - 1 do
-      smp += Sqr(fltSmp[iChannel, iSample]);
-    smp := Sqrt(smp / ChannelCount);
-
-    curPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
-
-    if (iSample mod BlockSampleCount = 0) and (curPower >= perFramePower) then
+    flt[iChannel] := CreateEmphasisFilter;
+  try
+    totalPower := 0;
+    for iSample := 0 to SampleCount - 1 do
     begin
-      if frmIdx >= Length(Frames) then
-        SetLength(Frames, frmIdx + 1);
+      smp := 0;
+      for iChannel := 0 to ChannelCount - 1 do
+        smp += Sqr(flt[iChannel].PreFilter(SrcData[iChannel, iSample]));
+      smp := Round(Sqrt(smp / ChannelCount));
 
-      frm := TFrame.Create(Self, frmIdx, nextStart, iSample - 1);
-      Frames[frmIdx] := frm;
-      Inc(frmIdx);
-
-      curPower := 0;
-      nextStart := iSample;
+      totalPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
     end;
+
+    perFramePower := totalPower / FrameCount;
+
+    if Verbose then
+    begin
+      writeln('TotalPower = ', Round(totalPower / High(SmallInt)));
+      writeln('PerFramePower = ', Round(perFramePower / High(SmallInt)));
+    end;
+
+    for iChannel := 0 to ChannelCount - 1 do
+      flt[iChannel].Init;
+
+    frmIdx := 0;
+    nextStart := 0;
+    curPower := 0;
+    SetLength(Frames, FrameCount);
+    for iSample := 0 to SampleCount - 1 do
+    begin
+      smp := 0;
+      for iChannel := 0 to ChannelCount - 1 do
+        smp += Sqr(flt[iChannel].PreFilter(SrcData[iChannel, iSample]));
+      smp := Round(Sqrt(smp / ChannelCount));
+
+      curPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
+
+      if (iSample mod BlockSampleCount = 0) and (curPower >= perFramePower) then
+      begin
+        if frmIdx >= Length(Frames) then
+          SetLength(Frames, frmIdx + 1);
+
+        frm := TFrame.Create(Self, frmIdx, nextStart, iSample - 1);
+        Frames[frmIdx] := frm;
+        Inc(frmIdx);
+
+        curPower := 0;
+        nextStart := iSample;
+      end;
+    end;
+
+    if frmIdx >= Length(Frames) then
+      SetLength(Frames, frmIdx + 1);
+
+    frm := TFrame.Create(Self, frmIdx, nextStart, SampleCount - 1);
+    Frames[frmIdx] := frm;
+    Inc(frmIdx);
+
+    SetLength(Frames, frmIdx);
+    FrameCount := frmIdx;
+  finally
+    for iChannel := 0 to ChannelCount - 1 do
+      flt[iChannel].Free;
   end;
-
-  if frmIdx >= Length(Frames) then
-    SetLength(Frames, frmIdx + 1);
-
-  frm := TFrame.Create(Self, frmIdx, nextStart, SampleCount - 1);
-  Frames[frmIdx] := frm;
-  Inc(frmIdx);
-
-  SetLength(Frames, frmIdx);
-  FrameCount := frmIdx;
 end;
 
 procedure TEncoder.MakeFrames;
@@ -1742,7 +1707,7 @@ begin
   PiggyCodingBlocksBits := 1;
   PiggyCodingSolveByValue := True;
   NoSolveFilterSettings := False;
-  GainFactor := Power(10.0, -6 / 20.0);
+  GainFactor := Power(10.0, -4.5 / 20.0);
 {$else}
   ChunkSize := 4;
   ChunksPerAttenuation := 16;
@@ -1786,8 +1751,7 @@ function TEncoder.CreateEmphasisFilter: TEmphasisFilter;
 begin
 {$ifdef ATARI_STE}
   Result := TLMC1992Filter.Create(SampleRate);
-  TLMC1992Filter(Result).SetToneLevel(TLMC1992Filter.CNeutralTone + 3, TLMC1992Filter.CNeutralTone - 3);
-  TLMC1992Filter(Result).FreqRespTable := @LMC1992FreqRespTable;
+  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.NEUTRAL_TONE + 3, TLMC1992Filter.NEUTRAL_TONE - 6);
 {$else}
   Result := TDeltaFilter.Create(SampleRate);
 {$endif}
@@ -1854,33 +1818,35 @@ begin
   Result := Power(10.0, Attenuation * CAttenuationLawDecibels / 20.0);
 end;
 
-class procedure TEncoder.ComputeDCTLut(chunkSz: Integer; lut: PDouble);
+class procedure TEncoder.ComputeDCT(chunkSz: Integer; samples, dct: PDouble);
 var
   k, n: Integer;
+  sum: Double;
 begin
   for k := 0 to chunkSz - 1 do
   begin
+    sum := 0;
     for n := 0 to chunkSz - 1 do
-    begin
-      lut^ := cos(pi / chunkSz * (n + 0.5) * k) * sqrt (2.0 / chunkSz);
-      Inc(lut);
-    end;
+      sum += samples[n] * cos(pi / chunkSz * (n + 0.5) * k);
+
+    dct^ := sum * sqrt (2.0 / chunkSz);
+    Inc(dct);
   end;
 end;
 
-class procedure TEncoder.ComputeInvDCTLut(chunkSz: Integer; lut: PDouble);
+class procedure TEncoder.ComputeInvDCT(chunkSz: Integer; dct, samples: PDouble);
 var
   k, n: Integer;
+  sum: Double;
 begin
   for k := 0 to chunkSz - 1 do
   begin
-    lut^ := 0.5 * sqrt(2.0 / chunkSz);
-    Inc(lut);
+    sum := 0.5 * dct[0];
     for n := 1 to chunkSz - 1 do
-    begin
-      lut^ := cos(pi / chunkSz * (k + 0.5) * n) * sqrt(2.0 / chunkSz);
-      Inc(lut);
-    end;
+      sum += dct[n] * cos (pi / chunkSz * (k + 0.5) * n);
+
+    samples^ := sum * sqrt(2.0 / chunkSz);
+    Inc(samples);
   end;
 end;
 
@@ -1987,24 +1953,6 @@ begin
   end;
 end;
 
-class procedure TEncoder.ConvolveDCT(chunkSz: Integer; input, output, lut: PDouble);
-var
-  k, n, p: Integer;
-  acc: Double;
-begin
-  p := 0;
-  for k := 0 to chunkSz - 1 do
-  begin
-    acc := 0.0;
-    for n := 0 to chunkSz - 1 do
-    begin
-      acc += input[n] * lut[p];
-      Inc(p);
-    end;
-    output[k] := acc;
-  end;
-end;
-
 procedure test_dct_idct;
 const
   CIter = 1000;
@@ -2014,20 +1962,14 @@ var
   test: array[0 .. CLen - 1] of Double;
   dct: array[0 .. CLen - 1] of Double;
   invdct: array[0 .. CLen - 1] of Double;
-  lut: array[0 .. Sqr(CLen) - 1] of Double;
-  ilut: array[0 .. Sqr(CLen) - 1] of Double;
 begin
   RandSeed := $42381337;
-
-  TEncoder.ComputeDCTLut(CLen, @lut[0]);
-  TEncoder.ComputeInvDCTLut(CLen, @ilut[0]);
-
   for iIter := 0 to CIter - 1 do
   begin
     for iDCT := 0 to CLen - 1 do
       test[iDCT] := Random * 2.0 - 1.0;
-    TEncoder.ConvolveDCT(CLen, @test[0], @dct[0], @lut[0]);
-    TEncoder.ConvolveDCT(CLen, @dct[0], @invdct[0], @ilut[0]);
+    TEncoder.ComputeDCT(CLen, @test[0], @dct[0]);
+    TEncoder.ComputeInvDCT(CLen, @dct[0], @invdct[0]);
     for iDCT := 0 to CLen - 1 do
       Assert(SameValue(test[iDCT], invdct[iDCT], 1e-6));
   end;
