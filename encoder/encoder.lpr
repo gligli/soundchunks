@@ -1519,7 +1519,7 @@ end;
 procedure TEncoder.PrepareFrames;
 const
   CAttenuationMilliseconds = 2.0;
-  CVariableCodingRatio = 0.7;
+  CVariableCodingRatio = 0.85;
 var
   iChannel, iSample, frmIdx, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
@@ -1760,7 +1760,7 @@ function TEncoder.CreateEmphasisFilter: TEmphasisFilter;
 begin
 {$ifdef ATARI_STE}
   Result := TLMC1992Filter.Create(SampleRate);
-  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.NEUTRAL_TONE + 3, TLMC1992Filter.NEUTRAL_TONE - 6);
+  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.NEUTRAL_TONE + 3, TLMC1992Filter.NEUTRAL_TONE - 3);
 {$else}
   Result := TDeltaFilter.Create(SampleRate);
 {$endif}
