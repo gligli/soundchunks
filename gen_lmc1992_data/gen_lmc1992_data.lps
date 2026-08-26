@@ -9,9 +9,9 @@
         <Filename Value="gen_lmc1992_data.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="115"/>
-        <CursorPos X="5" Y="164"/>
-        <UsageCount Value="20"/>
+        <TopLine Value="19"/>
+        <CursorPos Y="62"/>
+        <UsageCount Value="21"/>
         <Loaded Value="True"/>
       </Unit>
       <Unit>
@@ -20,7 +20,7 @@
         <EditorIndex Value="1"/>
         <TopLine Value="919"/>
         <CursorPos Y="1000"/>
-        <UsageCount Value="20"/>
+        <UsageCount Value="21"/>
         <Loaded Value="True"/>
       </Unit>
       <Unit>
@@ -48,39 +48,7 @@
         <Loaded Value="True"/>
       </Unit>
     </Units>
-    <JumpHistory HistoryIndex="29">
-      <Position>
-        <Filename Value="gen_lmc1992_data.lpr"/>
-        <Caret Line="90" TopLine="50"/>
-      </Position>
-      <Position>
-        <Filename Value="gen_lmc1992_data.lpr"/>
-        <Caret Line="91" TopLine="50"/>
-      </Position>
-      <Position>
-        <Filename Value="gen_lmc1992_data.lpr"/>
-        <Caret Line="82" TopLine="50"/>
-      </Position>
-      <Position>
-        <Filename Value="gen_lmc1992_data.lpr"/>
-        <Caret Line="92" TopLine="50"/>
-      </Position>
-      <Position>
-        <Filename Value="gen_lmc1992_data.lpr"/>
-        <Caret Line="104" Column="17" TopLine="60"/>
-      </Position>
-      <Position>
-        <Filename Value="gen_lmc1992_data.lpr"/>
-        <Caret Line="36" Column="24" TopLine="9"/>
-      </Position>
-      <Position>
-        <Filename Value="gen_lmc1992_data.lpr"/>
-        <Caret Line="64" Column="11" TopLine="39"/>
-      </Position>
-      <Position>
-        <Filename Value="gen_lmc1992_data.lpr"/>
-        <Caret Line="37" Column="13" TopLine="10"/>
-      </Position>
+    <JumpHistory HistoryIndex="28">
       <Position>
         <Filename Value="gen_lmc1992_data.lpr"/>
         <Caret Line="36" TopLine="17"/>
@@ -169,6 +137,37 @@
         <Filename Value="gen_lmc1992_data.lpr"/>
         <Caret Line="96" TopLine="69"/>
       </Position>
+      <Position>
+        <Filename Value="gen_lmc1992_data.lpr"/>
+        <Caret Line="131" Column="32" TopLine="93"/>
+      </Position>
+      <Position>
+        <Filename Value="gen_lmc1992_data.lpr"/>
+        <Caret Line="28" Column="13"/>
+      </Position>
+      <Position>
+        <Filename Value="gen_lmc1992_data.lpr"/>
+        <Caret Line="60"/>
+      </Position>
+      <Position>
+        <Filename Value="gen_lmc1992_data.lpr"/>
+        <Caret Line="96" Column="13" TopLine="69"/>
+      </Position>
+      <Position>
+        <Filename Value="gen_lmc1992_data.lpr"/>
+        <Caret Line="94" Column="37" TopLine="69"/>
+      </Position>
+      <Position>
+        <Filename Value="gen_lmc1992_data.lpr"/>
+        <Caret Line="54" Column="12" TopLine="25"/>
+      </Position>
+      <Position>
+        <Filename Value="gen_lmc1992_data.lpr"/>
+        <Caret Line="142" TopLine="118"/>
+      </Position>
+      <Position>
+        <Filename Value="gen_lmc1992_data.lpr"/>
+      </Position>
     </JumpHistory>
     <RunParams>
       <FormatVersion Value="2"/>
@@ -176,6 +175,15 @@
     </RunParams>
   </ProjectSession>
   <Debugging>
+    <BreakPoints>
+      <Item>
+        <Kind Value="bpkSource"/>
+        <WatchScope Value="wpsLocal"/>
+        <WatchKind Value="wpkWrite"/>
+        <Source Value="gen_lmc1992_data.lpr"/>
+        <Line Value="174"/>
+      </Item>
+    </BreakPoints>
     <Watches>
       <Item>
         <Expression Value="line"/>

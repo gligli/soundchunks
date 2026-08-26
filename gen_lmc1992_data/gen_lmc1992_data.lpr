@@ -25,12 +25,13 @@ begin
 end;
 
 const
-  TONE_STEPS = 13;
-  NEUTRAL_TONE = 6;
+  CToneSteps = 13;
+  CFFTSize = 4096;
+  CSampleRate = 25033;
 
 var
-  ltspicePath, tmpCirFR, tmpRawFN, tmpLogFN, tmpOpRawFN, line, hdr: String;
-  iBass, iTreb, iLine, nbVar, nbPoints, freqVar, outVar, valuesStartLine, varIdx, pointIdx: Integer;
+  ltspicePath, tmpCirFR, tmpRawFN, tmpLogFN, tmpOpRawFN, fftList, line, hdr: String;
+  iFFT, iBass, iTreb, iLine, nbVar, nbPoints, freqVar, outVar, valuesStartLine, varIdx, pointIdx: Integer;
   bassPot, trebPot: Double;
   v: Single;
   inVariables, inValues: Boolean;
@@ -49,13 +50,17 @@ begin
   WriteLn('ltspicePath: ', ltspicePath);
   Assert(ltspicePath <> '', 'LTspice not found!');
 
+  fftList := '';
+  for iFFT := 0 to CFFTSize shr 1 do
+    fftList += ' ' + FloatToStr(iFFT * CSampleRate / CFFTSize, InvariantFormatSettings);
+
   dataStream := TFileStream.Create(ExtractFilePath(ParamStr(0)) + '..\encoder\lmc1992.dat', fmCreate or fmShareDenyWrite);
   try
-    for iBass := 0 to TONE_STEPS - 1 do
-      for iTreb := 0 to TONE_STEPS - 1 do
+    for iBass := 0 to CToneSteps - 1 do
+      for iTreb := 0 to CToneSteps - 1 do
       begin
-        bassPot := iBass / (TONE_STEPS - 1);
-        trebPot := iTreb / (TONE_STEPS - 1);
+        bassPot := iBass / (CToneSteps - 1);
+        trebPot := iTreb / (CToneSteps - 1);
 
         WriteLn(iBass:4, iTreb:4, bassPot:9:3, trebPot:9:3);
 
@@ -77,6 +82,9 @@ begin
           begin
             sl[iLine] := StringReplace(sl[iLine], '#bass#', FloatToStr(bassPot, InvariantFormatSettings), []);
             sl[iLine] := StringReplace(sl[iLine], '#treb#', FloatToStr(trebPot, InvariantFormatSettings), []);
+
+            if sl[iLine].StartsWith('.ac ') then
+              sl[iLine] := '.ac list' + fftList;
           end;
 
           sl.SaveToFile(tmpCirFR);
@@ -127,6 +135,8 @@ begin
                 varSL.DelimitedText := lineSL[lineSL.Count - 1];
 
                 v := StrToFloatDef(varSL[0], NaN, InvariantFormatSettings);
+
+                Assert(not IsNan(v));
 
                 dataStream.Write(v, SizeOf(v));
               end;
