@@ -62,7 +62,10 @@ var
     StreamVersion, ChannelCount, ChunkBitDepth, ChunkSize, ChunkCount: Integer;
     FrameLength, SampleRate, PiggyMaxCodingBits, ChunksPerAttenuation: Integer;
     Chunks: TSmallIntDynArray2;
-    piggyCodings: TByteDynArray;
+    piggyCodings: array of record
+      BitSize: Byte;
+      CumulatedStart: Integer;
+    end;
     memStream: TMemoryStream;
     bits: Word;
 
@@ -178,8 +181,15 @@ var
         for iChannel := 0 to ChannelCount - 1 do
           channelSample[iChannel] := SmallInt(ASourceStream.ReadWord);
 
-        for iVariableCoding := 0 to (1 shl PiggyMaxCodingBits) - 1 do
-          piggyCodings[iVariableCoding] := ASourceStream.ReadByte;
+        for iVariableCoding := 0 to High(piggyCodings) do
+          piggyCodings[iVariableCoding].BitSize := ASourceStream.ReadByte;
+
+        piggyCodings[0].CumulatedStart := 0;
+        for iVariableCoding := 1 to High(piggyCodings) do
+        begin
+          piggyCodings[iVariableCoding].CumulatedStart := piggyCodings[iVariableCoding - 1].CumulatedStart;
+          piggyCodings[iVariableCoding].CumulatedStart += 1 shl piggyCodings[iVariableCoding - 1].BitSize;
+        end;
 
         bits := 0;
         bitCount := 0;
@@ -200,10 +210,8 @@ var
               if GetBits(1) <> 0 then // has new header?
                 variableCodingHeader := GetBits(PiggyMaxCodingBits);
 
-              chunkIndex[iChannel] := 0;
-              for iVariableCoding := 0 to variableCodingHeader - 1 do
-                chunkIndex[iChannel] += 1 shl piggyCodings[iVariableCoding];
-              chunkIndex[iChannel] += GetBits(piggyCodings[variableCodingHeader]);
+              chunkIndex[iChannel] := piggyCodings[variableCodingHeader].CumulatedStart;
+              chunkIndex[iChannel] += GetBits(piggyCodings[variableCodingHeader].BitSize);
             end;
 
             for iSample := 0 to ChunkSize - 1 do
