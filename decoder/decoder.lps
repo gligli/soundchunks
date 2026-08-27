@@ -165,7 +165,7 @@
       <Modes ActiveMode="default">
         <Mode Name="default">
           <local>
-            <CommandLineParams Value="..\mo_.gsc ..\mo_dec.wav"/>
+            <CommandLineParams Value="..\mo.gsc ..\modec.wav"/>
             <LaunchingApplication PathPlusParams="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
           </local>
         </Mode>
@@ -176,9 +176,9 @@
         <Item1 Value="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
       </List>
       <List Name="CommandLineParameters" Count="16">
-        <Item1 Value="..\mo_.gsc ..\mo_dec.wav"/>
-        <Item2 Value="..\e3.gsc ..\e3dec.wav"/>
-        <Item3 Value="..\mo.gsc ..\modec.wav"/>
+        <Item1 Value="..\mo.gsc ..\modec.wav"/>
+        <Item2 Value="..\mo_.gsc ..\mo_dec.wav"/>
+        <Item3 Value="..\e3.gsc ..\e3dec.wav"/>
         <Item4 Value="..\out2.gsc ..\out2dec.wav"/>
         <Item5 Value="..\out1.gsc ..\out1dec.wav"/>
         <Item6 Value="..\out0.gsc ..\out0dec.wav"/>
