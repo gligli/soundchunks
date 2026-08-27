@@ -926,13 +926,13 @@ var
 begin
   prec := encoder.Precision;
 
-  colCount := encoder.ChunkSize;
-  clusterCount := encoder.ChunksPerFrame;
-
   SetLength(Dataset, plainChunks.Count);
 
   for iChunk := 0 to plainChunks.Count - 1 do
     Dataset[iChunk] := plainChunks[iChunk].ComputeFeatures;
+
+  colCount := Length(Dataset[0]);
+  clusterCount := encoder.ChunksPerFrame;
 
   if (prec > 0) and (plainChunks.Count > clusterCount) then
   begin
@@ -1012,7 +1012,7 @@ end;
 
 procedure TFrame.Reconstruct;
 var
-  iDS, iChunk, iSample, iChannel, dsIdx, bestIdx: Integer;
+  iDS, iChunk, iSample, iChannel, dsIdx, bestIdx, colCount: Integer;
   bestErr, attCoeff, skew: Double;
   truthAcc, lossyAcc: TDoubleDynArray;
   Dataset: TANNFloatDynArray2;
@@ -1020,9 +1020,10 @@ var
   KDT: PANNkdtree;
   chunk: TChunk;
 begin
-  SetLength(Dataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, encoder.chunkSize * 2);
+  colCount := encoder.chunkSize;
 
-  SetLength(query, encoder.chunkSize * 2);
+  SetLength(query, colCount + encoder.chunkSize);
+  SetLength(Dataset, reducedChunks.Count * 2 {Negative} * 2 {Reversed}, Length(query));
 
 {$ifndef ATARI_STE}
   SetLength(truthAcc, encoder.ChannelCount);
@@ -1044,20 +1045,20 @@ begin
 
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
-      Dataset[dsIdx + 0, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, False, encoder.GainFactor);
-      Dataset[dsIdx + 1, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, True, encoder.GainFactor);
-      Dataset[dsIdx + 2, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, False, encoder.GainFactor);
-      Dataset[dsIdx + 3, encoder.chunkSize + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, True, encoder.GainFactor);
+      Dataset[dsIdx + 0, colCount + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, False, encoder.GainFactor);
+      Dataset[dsIdx + 1, colCount + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, True, encoder.GainFactor);
+      Dataset[dsIdx + 2, colCount + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, False, encoder.GainFactor);
+      Dataset[dsIdx + 3, colCount + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, True, encoder.GainFactor);
     end;
 
     for iDS := 0 to 3 do
     begin
-      TEncoder.ConvolveDCT(encoder.ChunkSize, @Dataset[dsIdx, encoder.chunkSize], @Dataset[dsIdx, 0], @encoder.DCTLut[0]);
+      TEncoder.ConvolveDCT(encoder.ChunkSize, @Dataset[dsIdx, colCount], @Dataset[dsIdx, 0], @encoder.DCTLut[0]);
       Inc(dsIdx);
     end;
   end;
 
-  KDT := ann_kdtree_create(PPANNFloat(@Dataset[0]), Length(Dataset), encoder.ChunkSize, 1, ANN_KD_STD);
+  KDT := ann_kdtree_create(PPANNFloat(@Dataset[0]), Length(Dataset), colCount, 1, ANN_KD_STD);
   try
     for iChunk := 0 to plainChunks.Count - 1 do
     begin
@@ -1072,9 +1073,9 @@ begin
 {$endif}
 
       for iSample := 0 to encoder.ChunkSize - 1 do
-        query[encoder.chunkSize + iSample] := (chunk.srcData[iSample] - skew) * attCoeff;
+        query[colCount + iSample] := (chunk.srcData[iSample] - skew) * attCoeff;
 
-      TEncoder.ConvolveDCT(encoder.ChunkSize, @query[encoder.chunkSize], @query[0], @encoder.DCTLut[0]);
+      TEncoder.ConvolveDCT(encoder.ChunkSize, @query[colCount], @query[0], @encoder.DCTLut[0]);
 
       bestIdx := ann_kdtree_search(KDT, @query[0], 0.0, @bestErr);
 
@@ -1088,7 +1089,7 @@ begin
       for iSample := 0 to encoder.ChunkSize - 1 do
       begin
         truthAcc[chunk.channel] += chunk.srcData[iSample];
-        lossyAcc[chunk.channel] += Dataset[bestIdx, encoder.ChunkSize + iSample] / attCoeff;
+        lossyAcc[chunk.channel] += Dataset[bestIdx, colCount + iSample] / attCoeff;
       end;
 {$endif}
     end;
@@ -1944,9 +1945,7 @@ begin
   try
     FormatSettings.DecimalSeparator := '.';
 
-{$ifdef DEBUG}
-    //ProcThreadPool.MaxThreadCount := 1;
-{$else}
+{$ifndef DEBUG}
     SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS);
 {$endif}
 

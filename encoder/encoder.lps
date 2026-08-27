@@ -10,13 +10,13 @@
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
-        <TopLine Value="1408"/>
-        <CursorPos Y="1430"/>
+        <TopLine Value="1061"/>
+        <CursorPos X="64" Y="1030"/>
         <UsageCount Value="200"/>
         <Bookmarks Count="3">
-          <Item0 Y="1918" ID="3"/>
-          <Item1 Y="680" Left="1" Top="640" ID="1"/>
-          <Item2 Y="1300" Left="1" Top="1251" ID="2"/>
+          <Item0 Y="1968" ID="3"/>
+          <Item1 Y="683" Left="1" Top="643" ID="1"/>
+          <Item2 Y="1306" Left="1" Top="1257" ID="2"/>
         </Bookmarks>
         <Loaded Value="True"/>
       </Unit0>
@@ -119,155 +119,156 @@
     <JumpHistory Count="30" HistoryIndex="29">
       <Position1>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="177" Column="18" TopLine="151"/>
+        <Caret Line="1936" TopLine="1909"/>
       </Position1>
       <Position2>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1156" Column="3" TopLine="1161"/>
+        <Caret Line="1060" TopLine="1033"/>
       </Position2>
       <Position3>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="176" Column="15" TopLine="150"/>
+        <Caret Line="1061" TopLine="1018"/>
       </Position3>
       <Position4>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1340" Column="17" TopLine="1320"/>
+        <Caret Line="1060" TopLine="1018"/>
       </Position4>
       <Position5>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1349" Column="6" TopLine="1311"/>
+        <Caret Line="1061" TopLine="1018"/>
       </Position5>
       <Position6>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="177" Column="15" TopLine="166"/>
+        <Caret Line="1060" TopLine="1018"/>
       </Position6>
       <Position7>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1121" TopLine="1111"/>
+        <Caret Line="245" Column="21" TopLine="217"/>
       </Position7>
       <Position8>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="202" Column="5" TopLine="167"/>
+        <Caret Line="1930" TopLine="1895"/>
       </Position8>
       <Position9>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="175" Column="27" TopLine="141"/>
+        <Caret Line="1931" TopLine="1895"/>
       </Position9>
       <Position10>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1100" TopLine="1072"/>
+        <Caret Line="1933" TopLine="1895"/>
       </Position10>
       <Position11>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="247" Column="28" TopLine="222"/>
+        <Caret Line="1934" TopLine="1895"/>
       </Position11>
       <Position12>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1664" Column="18" TopLine="1640"/>
+        <Caret Line="1931" TopLine="1895"/>
       </Position12>
       <Position13>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="175" Column="17" TopLine="163"/>
+        <Caret Line="1933" TopLine="1895"/>
       </Position13>
       <Position14>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1104" Column="28" TopLine="1066"/>
+        <Caret Line="1934" TopLine="1895"/>
       </Position14>
       <Position15>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="175" Column="15" TopLine="147"/>
+        <Caret Line="1931" TopLine="1895"/>
       </Position15>
       <Position16>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="245" Column="21" TopLine="213"/>
+        <Caret Line="1933" TopLine="1895"/>
       </Position16>
       <Position17>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1664" Column="24" TopLine="1638"/>
+        <Caret Line="1934" TopLine="1895"/>
       </Position17>
       <Position18>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="175" Column="17" TopLine="161"/>
+        <Caret Line="1931" TopLine="1895"/>
       </Position18>
       <Position19>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1119" Column="39" TopLine="1102"/>
+        <Caret Line="1921" TopLine="1895"/>
       </Position19>
       <Position20>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="251" Column="15" TopLine="203"/>
+        <Caret Line="1936" TopLine="1895"/>
       </Position20>
       <Position21>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1446" Column="3" TopLine="1441"/>
+        <Caret Line="1926" TopLine="1895"/>
       </Position21>
       <Position22>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="250" Column="15" TopLine="223"/>
+        <Caret Line="173" Column="14" TopLine="145"/>
       </Position22>
       <Position23>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1403" TopLine="1389"/>
+        <Caret Line="1060" TopLine="1043"/>
       </Position23>
       <Position24>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="251" Column="14" TopLine="222"/>
+        <Caret Line="1066" Column="70" TopLine="1052"/>
       </Position24>
       <Position25>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1422" TopLine="1403"/>
+        <Caret Line="1084" TopLine="1052"/>
       </Position25>
       <Position26>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1438" Column="54" TopLine="1403"/>
+        <Caret Line="1061" Column="19" TopLine="1040"/>
       </Position26>
       <Position27>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1423" Column="3" TopLine="1395"/>
+        <Caret Line="1059" Column="43" TopLine="1040"/>
       </Position27>
       <Position28>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="250" Column="15" TopLine="223"/>
+        <Caret Line="139" TopLine="92"/>
       </Position28>
       <Position29>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1393" TopLine="1389"/>
+        <Caret Line="758" Column="20" TopLine="730"/>
       </Position29>
       <Position30>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="251" Column="14" TopLine="222"/>
+        <Caret Line="173" Column="15" TopLine="160"/>
       </Position30>
     </JumpHistory>
     <RunParams>
       <FormatVersion Value="2"/>
       <Modes ActiveMode="default"/>
     </RunParams>
-    <HistoryLists Count="2">
+    <HistoryLists Count="3">
       <List0 Name="LaunchingApplication" Type="File" Count="1">
         <Item1 Value="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
       </List0>
       <List1 Name="CommandLineParameters" Count="20">
-        <Item1 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf20 -vfr0 -d"/>
-        <Item2 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf20 -nsfs -vfr0 -d"/>
-        <Item3 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;toto&quot; -cpf20 -nsfs -vfr0"/>
-        <Item4 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;toto&quot; -cpf20 -nsfs"/>
-        <Item5 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;toto&quot; -cpf20"/>
-        <Item6 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;toto&quot;"/>
-        <Item7 Value=" ..\fr025_st7.flac ..\st_fr025 -d -cpf12"/>
-        <Item8 Value=" ..\else3_st.wav ..\st -cpf24 -nsfs"/>
-        <Item9 Value="..\else3_st.wav ..\st -v -d -cpf22 -nsfs"/>
-        <Item10 Value="..\else3_st.wav ..\st -v -d -cpf22 -nsfs -fl1e6"/>
-        <Item11 Value="..\else3_st.wav ..\st -v -d -br48"/>
-        <Item12 Value="..\else3_st.wav ..\st -d -br48"/>
-        <Item13 Value="..\lame_test\else3.wav ..\st.wav -d -cpf24"/>
-        <Item14 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128 -pr0"/>
-        <Item15 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128"/>
-        <Item16 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav  -d -cs8 -br128"/>
-        <Item17 Value="..\fr025_st4.flac ..\st.wav -v -d -br36"/>
-        <Item18 Value="..\opus_test\mo_b_44_2.wav ..\out2.wav  -d -cs16 -br64"/>
-        <Item19 Value=" ..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cpf142"/>
-        <Item20 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav  -d -cs16 -br64"/>
+        <Item1 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf20 -d -cpf20"/>
+        <Item2 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf20 -vfr0 -d"/>
+        <Item3 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf20 -nsfs -vfr0 -d"/>
+        <Item4 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;toto&quot; -cpf20 -nsfs -vfr0"/>
+        <Item5 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;toto&quot; -cpf20 -nsfs"/>
+        <Item6 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;toto&quot; -cpf20"/>
+        <Item7 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;toto&quot;"/>
+        <Item8 Value=" ..\fr025_st7.flac ..\st_fr025 -d -cpf12"/>
+        <Item9 Value=" ..\else3_st.wav ..\st -cpf24 -nsfs"/>
+        <Item10 Value="..\else3_st.wav ..\st -v -d -cpf22 -nsfs"/>
+        <Item11 Value="..\else3_st.wav ..\st -v -d -cpf22 -nsfs -fl1e6"/>
+        <Item12 Value="..\else3_st.wav ..\st -v -d -br48"/>
+        <Item13 Value="..\else3_st.wav ..\st -d -br48"/>
+        <Item14 Value="..\lame_test\else3.wav ..\st.wav -d -cpf24"/>
+        <Item15 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128 -pr0"/>
+        <Item16 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cs8 -br128"/>
+        <Item17 Value="..\opus_test\mo_b_44_2.wav ..\out1.wav  -d -cs8 -br128"/>
+        <Item18 Value="..\fr025_st4.flac ..\st.wav -v -d -br36"/>
+        <Item19 Value="..\opus_test\mo_b_44_2.wav ..\out2.wav  -d -cs16 -br64"/>
+        <Item20 Value=" ..\opus_test\mo_b_44_2.wav ..\out1.wav -v -d -cpf142"/>
       </List1>
+      <List2 Name="WorkingDirectory" Type="File" Count="1"/>
     </HistoryLists>
   </ProjectSession>
   <Debugging>
