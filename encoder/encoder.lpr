@@ -108,7 +108,7 @@ type
     codingBlocksBits: Byte;
     codingBlocksCount: Cardinal;
 
-    function TestCodingBlocks(const ACodingBlocks: array of Byte): UInt64;
+    function InternalRender(AStream: TStream; const ACodingBlocks: array of Byte): Boolean;
   public
     constructor Create(ACodes: TCodeArray; ACodingBlocksBits: Byte; AHighestCode: Integer);
 
@@ -480,8 +480,7 @@ end;
 
 { TPiggyCoder }
 
-constructor TPiggyCoder.Create(ACodes: TCodeArray; ACodingBlocksBits: Byte; AHighestCode:
-  Integer);
+constructor TPiggyCoder.Create(ACodes: TCodeArray; ACodingBlocksBits: Byte; AHighestCode: Integer);
 var
   iCodingBits: Integer;
   bitBlock, valuesCoded: Integer;
@@ -503,6 +502,7 @@ end;
 
 function TPiggyCoder.SolveCodingBlocks: UInt64;
 var
+  ms: TMemoryStream;
   locCodingBlocks: array[0 .. High(Byte)] of Byte;
 
   procedure DoTest;
@@ -510,13 +510,17 @@ var
     iCodingBlocks: Integer;
     curSize: UInt64;
   begin
-    curSize := TestCodingBlocks(locCodingBlocks);
-
-    if curSize < Result then
+    ms.Position := 0;
+    if InternalRender(ms, locCodingBlocks) then
     begin
-      Result := curSize;
-      for iCodingBlocks := 0 to codingBlocksCount - 1 do
-        codingBlocks[iCodingBlocks] := locCodingBlocks[iCodingBlocks];
+      curSize := ms.Position;
+
+      if curSize < Result then
+      begin
+        Result := curSize;
+        for iCodingBlocks := 0 to codingBlocksCount - 1 do
+          codingBlocks[iCodingBlocks] := locCodingBlocks[iCodingBlocks];
+      end;
     end;
   end;
 
@@ -524,102 +528,70 @@ var
   iCB0, iCB1, iCB2, iCB3, iCB4, iCB5, iCB6, iCB7: Byte;
 begin
   Result := High(UInt64);
+  ms := TMemoryStream.Create;
+  try
 
-  if codingBlocksBits = 3 then
-  begin
-    for iCB0 := 1 to codesBitCount do
-      for iCB1 := iCB0 to codesBitCount do
-        for iCB2 := iCB1 to codesBitCount do
-          for iCB3 := iCB2 to codesBitCount do
-            for iCB4 := iCB3 to codesBitCount do
-              for iCB5 := iCB4 to codesBitCount do
-                for iCB6 := iCB5 to codesBitCount do
-                  for iCB7 := iCB6 to codesBitCount do
-                  begin
-                    locCodingBlocks[0] := iCB0; locCodingBlocks[1] := iCB1;
-                    locCodingBlocks[2] := iCB2; locCodingBlocks[3] := iCB3;
-                    locCodingBlocks[4] := iCB4; locCodingBlocks[5] := iCB5;
-                    locCodingBlocks[6] := iCB6; locCodingBlocks[7] := iCB7;
+    if codingBlocksBits = 3 then
+    begin
+      for iCB0 := 1 to codesBitCount do
+        for iCB1 := iCB0 to codesBitCount do
+          for iCB2 := iCB1 to codesBitCount do
+            for iCB3 := iCB2 to codesBitCount do
+              for iCB4 := iCB3 to codesBitCount do
+                for iCB5 := iCB4 to codesBitCount do
+                  for iCB6 := iCB5 to codesBitCount do
+                    for iCB7 := iCB6 to codesBitCount do
+                    begin
+                      locCodingBlocks[0] := iCB0; locCodingBlocks[1] := iCB1;
+                      locCodingBlocks[2] := iCB2; locCodingBlocks[3] := iCB3;
+                      locCodingBlocks[4] := iCB4; locCodingBlocks[5] := iCB5;
+                      locCodingBlocks[6] := iCB6; locCodingBlocks[7] := iCB7;
 
-                    DoTest;
-                  end;
-  end
-  else if codingBlocksBits = 2 then
-  begin
-    for iCB0 := 1 to codesBitCount do
-      for iCB1 := iCB0 to codesBitCount do
-        for iCB2 := iCB1 to codesBitCount do
-          for iCB3 := iCB2 to codesBitCount do
-          begin
-            locCodingBlocks[0] := iCB0; locCodingBlocks[1] := iCB1;
-            locCodingBlocks[2] := iCB2; locCodingBlocks[3] := iCB3;
+                      DoTest;
+                    end;
+    end
+    else if codingBlocksBits = 2 then
+    begin
+      for iCB0 := 1 to codesBitCount do
+        for iCB1 := iCB0 to codesBitCount do
+          for iCB2 := iCB1 to codesBitCount do
+            for iCB3 := iCB2 to codesBitCount do
+            begin
+              locCodingBlocks[0] := iCB0; locCodingBlocks[1] := iCB1;
+              locCodingBlocks[2] := iCB2; locCodingBlocks[3] := iCB3;
 
-            DoTest;
-          end;
-  end
-  else if codingBlocksBits = 1 then
-  begin
-    for iCB0 := 1 to codesBitCount do
-      for iCB1 := iCB0 to codesBitCount do
-      begin
-        locCodingBlocks[0] := iCB0; locCodingBlocks[1] := iCB1;
+              DoTest;
+            end;
+    end
+    else if codingBlocksBits = 1 then
+    begin
+      for iCB0 := 1 to codesBitCount do
+        for iCB1 := iCB0 to codesBitCount do
+        begin
+          locCodingBlocks[0] := iCB0; locCodingBlocks[1] := iCB1;
 
-        DoTest;
-      end;
-  end
-  else
-  begin
-    Assert(False);
-  end;
-end;
-
-function TPiggyCoder.TestCodingBlocks(const ACodingBlocks: array of Byte): UInt64;
-var
-  iCode, iCodingBlocks, codeValue, codeBlockLimit, prevCodingBlocks: Integer;
-  coded: Boolean;
-begin
-  // /!\ should be kept synced with TPiggyCoder.Render
-
-  Result := (codingBlocksCount shr 1) * 8;
-
-  Result := 0;
-  prevCodingBlocks := -1;
-  for iCode := 0 to High(codes) do
-  begin
-    Result += codes[iCode].ExtraBitCount;
-
-    coded := False;
-    codeValue := codes[iCode].Code;
-    iCodingBlocks := 0;
-    repeat
-      codeBlockLimit := 1 shl ACodingBlocks[iCodingBlocks];
-      if codeValue < codeBlockLimit then
-      begin
-        coded := True;
-        Break;
-      end;
-      codeValue -= codeBlockLimit;
-      Inc(iCodingBlocks);
-    until iCodingBlocks >= codingBlocksCount;
-
-    if not coded then
-      Exit(High(UInt64));
-
-    if codingBlocksBits > 1 then
-      Result += IfThen(iCodingBlocks = prevCodingBlocks, 1, 1 + codingBlocksBits)
+          DoTest;
+        end;
+    end
     else
-      Result += codingBlocksBits;
+    begin
+      Assert(False);
+    end;
 
-    Result += ACodingBlocks[iCodingBlocks];
-
-    prevCodingBlocks := iCodingBlocks;
+  finally
+    ms.Free;
   end;
-
-  if Result and 15 <> 0 then
-    Result += 16 - (Result and 15);
 end;
 
 procedure TPiggyCoder.Render(AStream: TStream);
+var
+  coded: Boolean;
+begin
+  coded := InternalRender(AStream, codingBlocks);
+  Assert(coded);
+end;
+
+function TPiggyCoder.InternalRender(AStream: TStream; const ACodingBlocks: array of Byte): Boolean;
 
   procedure DoWord(AWord: UInt64);
   begin
@@ -635,14 +607,14 @@ var
   itemBits, overallBits: UInt64;
   coded: Boolean;
 begin
-  // /!\ should be kept synced with TPiggyCoder.TestCodingBlocks
+  Result := True;
 
 {$ifdef ATARI_STE}
   for iCodingBlocks := 0 to (codingBlocksCount shr 1) - 1 do
-    AStream.WriteByte(((codingBlocks[iCodingBlocks * 2 + 0] - 1) shl 4) or (codingBlocks[iCodingBlocks * 2 + 1] - 1));
+    AStream.WriteByte(((ACodingBlocks[iCodingBlocks * 2 + 0] - 1) shl 4) or (ACodingBlocks[iCodingBlocks * 2 + 1] - 1));
 {$else}
   for iCodingBlocks := 0 to codingBlocksCount - 1 do
-    AStream.WriteByte(codingBlocks[iCodingBlocks]);
+    AStream.WriteByte(ACodingBlocks[iCodingBlocks]);
 {$endif}
 
   overallBits := 0;
@@ -664,7 +636,7 @@ begin
     codeValue := codes[iCode].Code;
     iCodingBlocks := 0;
     repeat
-      codeBlockLimit := 1 shl codingBlocks[iCodingBlocks];
+      codeBlockLimit := 1 shl ACodingBlocks[iCodingBlocks];
       if codeValue < codeBlockLimit then
       begin
         coded := True;
@@ -673,7 +645,8 @@ begin
       codeValue -= codeBlockLimit;
       Inc(iCodingBlocks);
     until iCodingBlocks >= codingBlocksCount;
-    Assert(coded);
+    if not coded then
+      Exit(False);
 
     if codingBlocksBits > 1 then
     begin
@@ -699,8 +672,8 @@ begin
 	    itemBitCnt += codingBlocksBits;
     end;
 
-    itemBits := codeValue or (itemBits shl codingBlocks[iCodingBlocks]);
-    itemBitCnt += codingBlocks[iCodingBlocks];
+    itemBits := codeValue or (itemBits shl ACodingBlocks[iCodingBlocks]);
+    itemBitCnt += ACodingBlocks[iCodingBlocks];
 
     overallBits := itemBits or (overallBits shl itemBitCnt);
     overallBitCnt += itemBitCnt;
@@ -1190,15 +1163,11 @@ procedure TFrame.MakeFrame(AVerbose: Boolean);
 begin
   MakeChunks;
   ComputeAttenuations;
-  if AVerbose then Write('.');
   Reduce;
   Reconstruct;
-  if AVerbose then Write('.');
   Reduce;
   Reconstruct;
-  if AVerbose then Write('.');
   MakeDstData;
-  if AVerbose then Write('.');
 end;
 
 procedure TFrame.SolveCompandingFilterSettings;
@@ -1225,7 +1194,7 @@ begin
     for iChannel := 0 to encoder.ChannelCount - 1 do
       TLMC1992Filter(filter[iChannel]).Set_Tone_Level(bass_level, iTreb);
 
-    MakeFrame(False);
+    MakeFrame;
 
     v := 0.0;
 		for iChannel := 0 to encoder.ChannelCount - 1 do
@@ -1621,6 +1590,7 @@ procedure TEncoder.MakeFrames;
       Frames[Index].MakeFrame
     else
       Frames[Index].SolveCompandingFilterSettings;
+    Write('.');
   end;
 
 begin
