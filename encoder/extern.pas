@@ -82,7 +82,7 @@ type
   PstAudioData = ^stAudioData;
 
   TCompareFunction=function(Item1,Item2,UserParameter:Pointer):Integer;
-  TEvalFunc = function(const arg: TDoubleDynArray; data: Pointer): Double of object;
+  TEvalFunc = function(const AX: TDoubleDynArray; AData: Pointer): Double of object;
 
   TSpinlock = LongInt;
   PSpinLock = ^TSpinlock;

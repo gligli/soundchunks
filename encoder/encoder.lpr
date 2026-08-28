@@ -13,7 +13,7 @@ const
   CMaxAttenuationBits = 4;
   CAttenuationLawDecibels = 2.0;
 {$else}
-  CStreamVersion = 6;
+  CStreamVersion = 7;
 
   CMaxAttenuationBits = 6;
   CAttenuationLawDecibels = 0.75;
@@ -99,20 +99,29 @@ type
       ExtraBitCount: Byte;
     end;
     TCodeArray = array of TCode;
+    TCodingTableItem = record
+      Bits: UInt64;
+      BitCount: Byte;
+    end;
+    TCodingTable = record
+      LUT: array of TCodingTableItem;
+      codingBlocksCount: Byte;
+      codingBlocks: array[0 .. High(Byte)] of Byte;
+    end;
   private
     codingBlocks: array[0 .. High(Byte)] of Byte;
     highestCode: Cardinal;
     codes: TCodeArray;
     codesBitCount: Byte;
 
-    codingBlocksBits: Byte;
     codingBlocksCount: Cardinal;
 
-    function InternalRender(AStream: TStream; const ACodingBlocks: array of Byte): Boolean;
+    function BuildCodingTable(ACodingBlocksCount: Byte; const ACodingBlocks: array of Byte; var ACodingTable: TCodingTable): Boolean;
+    function InternalRender(AStream: TStream; const ACodingTable: TCodingTable): UInt64;
   public
-    constructor Create(ACodes: TCodeArray; ACodingBlocksBits: Byte; AHighestCode: Integer);
+    constructor Create(ACodes: TCodeArray; AHighestCode: Integer);
 
-    function SolveCodingBlocks: UInt64;
+    procedure SolveCodingBlocks_BruteForce;
     procedure Render(AStream: TStream);
   end;
 
@@ -172,10 +181,11 @@ type
     procedure Reduce;
     procedure Reconstruct;
     procedure MakeDstData;
+    procedure MakeCoding;
     procedure SaveStream(AStream: TStream);
 
-    procedure MakeFrame(AVerbose: Boolean = True);
     procedure SolveCompandingFilterSettings;
+    procedure MakeFrame(AMakeCoding: Boolean = True);
   end;
 
   { TEncoder }
@@ -198,7 +208,6 @@ type
     ChunkBitDepth: Integer; // 8 or 12 Bits
     ChunkSize: Integer;
     ChunksPerFrame: Integer;
-    PiggyCodingBlocksBits: Byte;
     VariableFrameSizeRatio: Double;
     AttenuationChunkRatioMul: Double;
     FrameLength: Double;
@@ -480,147 +489,197 @@ end;
 
 { TPiggyCoder }
 
-constructor TPiggyCoder.Create(ACodes: TCodeArray; ACodingBlocksBits: Byte; AHighestCode: Integer);
-var
-  iCodingBits: Integer;
-  bitBlock, valuesCoded: Integer;
+constructor TPiggyCoder.Create(ACodes: TCodeArray; AHighestCode: Integer);
 begin
   codes := ACodes;
   highestCode := AHighestCode;
   codesBitCount := Ceil(Log2(highestCode + 1));
-  codingBlocksBits := ACodingBlocksBits;
-  codingBlocksCount := 1 shl codingBlocksBits;
 
-  bitBlock := codesBitCount div codingBlocksCount;
-  valuesCoded := 0;
-  for iCodingBits := 0 to codingBlocksCount - 1 do
-  begin
-    valuesCoded += 1 shl (bitBlock * (iCodingBits + 1));
-    codingBlocks[iCodingBits] := Ceil(Log2(valuesCoded));
-  end;
+  // dumb default (need to call SolveCodingBlocks_BruteForce)
+  codingBlocksCount := 1;
+  codingBlocks[0] := codesBitCount;
 end;
 
-function TPiggyCoder.SolveCodingBlocks: UInt64;
+procedure TPiggyCoder.SolveCodingBlocks_BruteForce;
 var
-  ms: TMemoryStream;
+  best: UInt64;
   locCodingBlocks: array[0 .. High(Byte)] of Byte;
-
-  procedure DoTest;
-  var
-    iCodingBlocks: Integer;
-    curSize: UInt64;
-  begin
-    ms.Position := 0;
-    if InternalRender(ms, locCodingBlocks) then
-    begin
-      curSize := ms.Position;
-
-      if curSize < Result then
-      begin
-        Result := curSize;
-        for iCodingBlocks := 0 to codingBlocksCount - 1 do
-          codingBlocks[iCodingBlocks] := locCodingBlocks[iCodingBlocks];
-      end;
-    end;
-  end;
-
-var
-  iCB0, iCB1, iCB2, iCB3, iCB4, iCB5, iCB6, iCB7: Byte;
+  codingTable: TCodingTable;
+  iCBC, iCB: ShortInt;
+  curSize: UInt64;
 begin
-  Result := High(UInt64);
-  ms := TMemoryStream.Create;
-  try
+  best := High(UInt64);
 
-    if codingBlocksBits = 3 then
-    begin
-      for iCB0 := 1 to codesBitCount do
-        for iCB1 := iCB0 to codesBitCount do
-          for iCB2 := iCB1 to codesBitCount do
-            for iCB3 := iCB2 to codesBitCount do
-              for iCB4 := iCB3 to codesBitCount do
-                for iCB5 := iCB4 to codesBitCount do
-                  for iCB6 := iCB5 to codesBitCount do
-                    for iCB7 := iCB6 to codesBitCount do
-                    begin
-                      locCodingBlocks[0] := iCB0; locCodingBlocks[1] := iCB1;
-                      locCodingBlocks[2] := iCB2; locCodingBlocks[3] := iCB3;
-                      locCodingBlocks[4] := iCB4; locCodingBlocks[5] := iCB5;
-                      locCodingBlocks[6] := iCB6; locCodingBlocks[7] := iCB7;
+  SetLength(codingTable.LUT, highestCode + 1);
 
-                      DoTest;
-                    end;
-    end
-    else if codingBlocksBits = 2 then
-    begin
-      for iCB0 := 1 to codesBitCount do
-        for iCB1 := iCB0 to codesBitCount do
-          for iCB2 := iCB1 to codesBitCount do
-            for iCB3 := iCB2 to codesBitCount do
-            begin
-              locCodingBlocks[0] := iCB0; locCodingBlocks[1] := iCB1;
-              locCodingBlocks[2] := iCB2; locCodingBlocks[3] := iCB3;
+  for iCBC := 1 to 7 do
+  begin
+    FillChar(locCodingBlocks, SizeOf(locCodingBlocks), 0);
 
-              DoTest;
-            end;
-    end
-    else if codingBlocksBits = 1 then
-    begin
-      for iCB0 := 1 to codesBitCount do
-        for iCB1 := iCB0 to codesBitCount do
+    repeat
+
+      Inc(locCodingBlocks[0]);
+      for iCB := 0 to iCBC - 2 do
+      begin
+        if locCodingBlocks[iCB] >= codesBitCount then
         begin
-          locCodingBlocks[0] := iCB0; locCodingBlocks[1] := iCB1;
-
-          DoTest;
+          locCodingBlocks[iCB] := 0;
+          Inc(locCodingBlocks[iCB + 1]);
+        end
+        else
+        begin
+          Break;
         end;
-    end
-    else
-    begin
-      Assert(False);
-    end;
+      end;
 
-  finally
-    ms.Free;
+      if BuildCodingTable(iCBC, locCodingBlocks, codingTable) then
+      begin
+        curSize := InternalRender(nil, codingTable);
+
+        if curSize < best then
+        begin
+          best := curSize;
+          codingBlocksCount := iCBC;
+          for iCB := 0 to iCBC - 1 do
+            codingBlocks[iCB] := locCodingBlocks[iCB];
+        end;
+      end;
+
+    until locCodingBlocks[iCBC - 1] >= codesBitCount;
   end;
 end;
 
 procedure TPiggyCoder.Render(AStream: TStream);
 var
-  coded: Boolean;
+  built: Boolean;
+  codingTable: TCodingTable;
 begin
-  coded := InternalRender(AStream, codingBlocks);
-  Assert(coded);
+  Write(codingBlocksCount, ' ');
+
+  SetLength(codingTable.LUT, highestCode + 1);
+
+  built := BuildCodingTable(codingBlocksCount, codingBlocks, codingTable);
+  Assert(built);
+
+  InternalRender(AStream, codingTable);
 end;
 
-function TPiggyCoder.InternalRender(AStream: TStream; const ACodingBlocks: array of Byte): Boolean;
-
-  procedure DoWord(AWord: UInt64);
-  begin
-{$ifdef ATARI_STE}
-    AStream.WriteWord(NtoBE(Word(AWord and $ffff)));
-{$else}
-    AStream.WriteWord(AWord and $ffff);
-{$endif}
-  end;
-
+function TPiggyCoder.BuildCodingTable(ACodingBlocksCount: Byte; const ACodingBlocks: array of Byte;
+  var ACodingTable: TCodingTable): Boolean;
 var
-  iCode, iCodingBlocks, itemBitCnt, overallBitCnt, codeValue, codeBlockLimit, prevCodingBlocks: Integer;
-  itemBits, overallBits: UInt64;
-  coded: Boolean;
+  iCode, iCodingBlocks, itemBitCnt, codeValue, codeBlockLimit, codingBlock: Integer;
+  itemBits: UInt64;
+  cbSum: Byte;
 begin
   Result := True;
 
+  cbSum := 0;
+  for iCodingBlocks := 0 to ACodingBlocksCount - 1 do
+    cbSum += ACodingBlocks[iCodingBlocks];
+  if cbSum < codesBitCount then
+    Exit(False);
+
+  ACodingTable.codingBlocksCount := ACodingBlocksCount;
+  Move(ACodingBlocks, ACodingTable.codingBlocks, ACodingBlocksCount);
+
+  for iCode := 0 to highestCode do
+  begin
+    itemBits := 0;
+    itemBitCnt := 0;
+
+    codeValue := iCode;
+
+    codingBlock := -1;
+    for iCodingBlocks := 0 to ACodingBlocksCount - 1 do
+    begin
+      codeBlockLimit := 1 shl ACodingBlocks[iCodingBlocks];
+
+      if codeValue < codeBlockLimit then
+      begin
+        if iCodingBlocks < ACodingBlocksCount - 1 then
+        begin
+	        itemBits := 0 or (itemBits shl 1);
+	        itemBitCnt += 1;
+        end;
+
+        codingBlock := iCodingBlocks;
+        Break;
+      end;
+
+      itemBits := 1 or (itemBits shl 1);
+      itemBitCnt += 1;
+
+      codeValue -= codeBlockLimit;
+    end;
+
+    if codingBlock < 0 then
+      Exit(False);
+
+    itemBits := codeValue or (itemBits shl ACodingBlocks[codingBlock]);
+    itemBitCnt += ACodingBlocks[codingBlock];
+
+    ACodingTable.LUT[iCode].Bits := itemBits;
+    ACodingTable.LUT[iCode].BitCount := itemBitCnt;
+  end;
+end;
+
+function TPiggyCoder.InternalRender(AStream: TStream; const ACodingTable: TCodingTable): UInt64;
+
+  procedure DoWord(AWord: UInt64);
+  begin
+    if Assigned(AStream) then
+    begin
 {$ifdef ATARI_STE}
-  for iCodingBlocks := 0 to (codingBlocksCount shr 1) - 1 do
-    AStream.WriteByte(((ACodingBlocks[iCodingBlocks * 2 + 0] - 1) shl 4) or (ACodingBlocks[iCodingBlocks * 2 + 1] - 1));
+      AStream.WriteWord(NtoBE(Word(AWord and $ffff)));
 {$else}
-  for iCodingBlocks := 0 to codingBlocksCount - 1 do
-    AStream.WriteByte(ACodingBlocks[iCodingBlocks]);
+      AStream.WriteWord(AWord and $ffff);
+{$endif}
+    end;
+
+    Result += BitSizeOf(Word);
+  end;
+
+  procedure DoByte(AByte: UInt64);
+  begin
+    if Assigned(AStream) then
+    begin
+      AStream.WriteByte(AByte and $ff);
+    end;
+
+    Result += BitSizeOf(Byte);
+  end;
+
+var
+  iCode, iCodingBlocks, itemBitCnt, overallBitCnt, codeValue: Integer;
+  itemBits, overallBits: UInt64;
+  b: Byte;
+  locCB: array[0 .. High(Byte)] of Byte;
+begin
+  Result := 0;
+
+{$ifdef ATARI_STE}
+  b := 0;
+  Move(ACodingTable.codingBlocks, locCB, ACodingTable.codingBlocksCount);
+  locCB[ACodingTable.codingBlocksCount] := $f; // $f terminated list
+  for iCodingBlocks := 0 to (ACodingTable.codingBlocksCount + 1) + Ord(odd(ACodingTable.codingBlocksCount + 1)) - 1 do
+    if Odd(iCodingBlocks) then
+    begin
+      b := b or locCB[iCodingBlocks];
+      DoByte(b);
+    end
+    else
+    begin
+      b := locCB[iCodingBlocks] shl 4;
+    end;
+{$else}
+  DoByte(ACodingTable.codingBlocksCount);
+  for iCodingBlocks := 0 to ACodingTable.codingBlocksCount - 1 do
+    DoByte(ACodingTable.codingBlocks[iCodingBlocks]);
 {$endif}
 
   overallBits := 0;
   overallBitCnt := 0;
 
-  prevCodingBlocks := -1;
   for iCode := 0 to High(codes) do
   begin
     itemBits := 0;
@@ -632,48 +691,9 @@ begin
       itemBitCnt += codes[iCode].ExtraBitCount;
     end;
 
-    coded := False;
     codeValue := codes[iCode].Code;
-    iCodingBlocks := 0;
-    repeat
-      codeBlockLimit := 1 shl ACodingBlocks[iCodingBlocks];
-      if codeValue < codeBlockLimit then
-      begin
-        coded := True;
-        Break;
-      end;
-      codeValue -= codeBlockLimit;
-      Inc(iCodingBlocks);
-    until iCodingBlocks >= codingBlocksCount;
-    if not coded then
-      Exit(False);
-
-    if codingBlocksBits > 1 then
-    begin
-	    if iCodingBlocks = prevCodingBlocks then
-	    begin
-	      itemBits := 0 or (itemBits shl 1);
-	      itemBitCnt += 1;
-	    end
-	    else
-	    begin
-	      itemBits := 1 or (itemBits shl 1);
-	      itemBitCnt += 1;
-
-	      itemBits := iCodingBlocks or (itemBits shl codingBlocksBits);
-	      itemBitCnt += codingBlocksBits;
-
-	      prevCodingBlocks := iCodingBlocks;
-	    end;
-    end
-    else
-    begin
-	    itemBits := iCodingBlocks or (itemBits shl codingBlocksBits);
-	    itemBitCnt += codingBlocksBits;
-    end;
-
-    itemBits := codeValue or (itemBits shl ACodingBlocks[iCodingBlocks]);
-    itemBitCnt += ACodingBlocks[iCodingBlocks];
+    itemBits := ACodingTable.LUT[codeValue].Bits or (itemBits shl ACodingTable.LUT[codeValue].BitCount);
+    itemBitCnt += ACodingTable.LUT[codeValue].BitCount;
 
     overallBits := itemBits or (overallBits shl itemBitCnt);
     overallBitCnt += itemBitCnt;
@@ -683,8 +703,6 @@ begin
       DoWord(overallBits shr overallBitCnt);
       overallBits := overallBits and ((1 shl overallBitCnt) - 1);
     end;
-
-    prevCodingBlocks := iCodingBlocks;
   end;
 
   if overallBitCnt > 0 then
@@ -1112,7 +1130,7 @@ begin
   AStream.WriteWord(w and $ffff);
   w := (encoder.ChunkSize shl 8) or encoder.ChunkBitDepth;
   AStream.WriteWord(w and $ffff);
-  w := (encoder.PiggyCodingBlocksBits shl 24) or encoder.SampleRate;
+  w := encoder.SampleRate;
   AStream.WriteDWord(w and $ffffffff);
   w := encoder.ChunksPerAttenuation;
   AStream.WriteWord(w and $ffff);
@@ -1159,7 +1177,7 @@ begin
   dstPiggyCoder.Render(AStream);
 end;
 
-procedure TFrame.MakeFrame(AVerbose: Boolean);
+procedure TFrame.MakeFrame(AMakeCoding: Boolean);
 begin
   MakeChunks;
   ComputeAttenuations;
@@ -1168,6 +1186,8 @@ begin
   Reduce;
   Reconstruct;
   MakeDstData;
+  if AMakeCoding then
+    MakeCoding;
 end;
 
 procedure TFrame.SolveCompandingFilterSettings;
@@ -1194,7 +1214,7 @@ begin
     for iChannel := 0 to encoder.ChannelCount - 1 do
       TLMC1992Filter(filter[iChannel]).Set_Tone_Level(bass_level, iTreb);
 
-    MakeFrame;
+    MakeFrame(False);
 
     v := 0.0;
 		for iChannel := 0 to encoder.ChannelCount - 1 do
@@ -1211,7 +1231,7 @@ begin
   for iChannel := 0 to encoder.ChannelCount - 1 do
     TLMC1992Filter(filter[iChannel]).Set_Tone_Level(bass_level, bestTreb);
 
-  MakeFrame;
+  MakeFrame(True);
   //WriteLn(index:4, bestTreb:4, best * High(SmallInt) / (SampleCount * encoder.ChannelCount):12:3);
 {$endif}
 end;
@@ -1222,11 +1242,7 @@ var
   smp: Double;
   chunk: TChunk;
   pos: TIntegerDynArray;
-  pCode: ^TPiggyCoder.TCode;
-  piggyCodes: TPiggyCoder.TCodeArray;
 begin
-  // audio
-
   SetLength(pos, encoder.ChannelCount);
   SetLength(dstData, encoder.ChannelCount, SampleCount);
   for iChannel := 0 to encoder.ChannelCount - 1 do
@@ -1251,9 +1267,15 @@ begin
       Inc(pos[chunk.channel]);
     end;
   end;
+end;
 
-  // coding
-
+procedure TFrame.MakeCoding;
+var
+  iChunk: Integer;
+  chunk: TChunk;
+  pCode: ^TPiggyCoder.TCode;
+  piggyCodes: TPiggyCoder.TCodeArray;
+begin
   SetLength(piggyCodes, plainChunks.Count);
   for iChunk := 0 to plainChunks.Count - 1 do
   begin
@@ -1276,8 +1298,8 @@ begin
   end;
 
   dstPiggyCoder.Free;
-  dstPiggyCoder := TPiggyCoder.Create(piggyCodes, encoder.PiggyCodingBlocksBits, reducedChunks.Count - 1);
-  dstPiggyCoder.SolveCodingBlocks;
+  dstPiggyCoder := TPiggyCoder.Create(piggyCodes, reducedChunks.Count - 1);
+  dstPiggyCoder.SolveCodingBlocks_BruteForce;
 end;
 
 { TEncoder }
@@ -1471,7 +1493,7 @@ begin
 
     indexingCost :=
       (SampleCount * ChannelCount * (
-        (Log2(ChunksPerFrame) + PiggyCodingBlocksBits + Ord(PiggyCodingBlocksBits > 1)) * CVariableCodingRatio +
+        Log2(ChunksPerFrame) * CVariableCodingRatio +
         1 {dstNegative} + 1 {dstReversed} +
         CMaxAttenuationBits / (ChunksPerAttenuation * ChannelCount)
       )) / (8 {bytes -> bits} * ChunkSize);
@@ -1480,12 +1502,12 @@ begin
       (ChunksPerFrame * ChunkSize) * ChunkBitDepth * FrameCount / 8;
 
 {$ifdef ATARI_STE}
-    headerCost := SizeOf(Word) * (1 shl PiggyCodingBlocksBits) * SizeOf(Byte);
+    headerCost := SizeOf(Word) + SizeOf(Byte) + 5 * 0.5 {estimated mean codingBlocksCount} * SizeOf(Byte);
 {$else}
     headerCost :=
       4 * SizeOf(Word) + SizeOf(Cardinal) + SizeOf(Cardinal) +
       ChannelCount * SizeOf(Word) +
-      (1 shl PiggyCodingBlocksBits) * SizeOf(Byte);
+       SizeOf(Byte) + 5 {estimated mean codingBlocksCount} * SizeOf(Byte);
 {$endif}
 
     tentativeByteSize := Round(headerCost + indexingCost + chunksCost);
@@ -1494,19 +1516,12 @@ begin
 
   ProjectedByteSize := tentativeByteSize;
 
-  writeln('ChannelCount = ', ChannelCount);
-  writeln('SampleRate = ', SampleRate);
-  writeln('FrameCount = ', FrameCount);
-  writeln('ChunksPerFrame = ', ChunksPerFrame);
-
   Assert(ChunksPerFrame > 0, 'Null ChunksPerFrame! (BitRate too low)');
 
   if Verbose then
   begin
-    WriteLn('SampleCount = ', SampleCount);
     writeln('FrameSize = ', ProjectedByteSize div FrameCount);
     writeln('ProjectedByteSize = ', ProjectedByteSize);
-    writeln('ChunkSize = ', ChunkSize);
   end;
 
   // pass 2
@@ -1580,6 +1595,12 @@ begin
     for iChannel := 0 to ChannelCount - 1 do
       flt[iChannel].Free;
   end;
+
+  WriteLn('SampleCount = ', SampleCount);
+  writeln('ChannelCount = ', ChannelCount);
+  writeln('SampleRate = ', SampleRate);
+  writeln('ChunksPerFrame = ', ChunksPerFrame);
+  writeln('FrameCount = ', FrameCount);
 end;
 
 procedure TEncoder.MakeFrames;
@@ -1617,7 +1638,6 @@ begin
   ChunksPerAttenuation := 36;
   FrameLength := 1000.0 / 3; // in ms
   VariableFrameSizeRatio := 1.0;
-  PiggyCodingBlocksBits := 1;
   NoSolveFilterSettings := False;
   GainFactor := Power(10.0, -4.5 / 20.0);
 {$else}
@@ -1626,7 +1646,6 @@ begin
   FrameLength := 10000; // in ms
   VariableFrameSizeRatio := 1.0;
   ChunksPerFrame := 8192;
-  PiggyCodingBlocksBits := 2;
   NoSolveFilterSettings := True;
   GainFactor := 1.0;
 {$endif}
