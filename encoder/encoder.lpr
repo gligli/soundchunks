@@ -116,12 +116,17 @@ type
 
     codingBlocksCount: Cardinal;
 
+    function GREvalCodingSize(const AX: TDoubleDynArray; AData: Pointer): Double;
+
     function BuildCodingTable(ACodingBlocksCount: Byte; const ACodingBlocks: array of Byte; var ACodingTable: TCodingTable): Boolean;
     function InternalRender(AStream: TStream; const ACodingTable: TCodingTable): UInt64;
+
+    procedure SolveCodingBlocks_BruteForce;
+    procedure SolveCodingBlocks_GridReduce;
   public
     constructor Create(ACodes: TCodeArray; AHighestCode: Integer);
 
-    procedure SolveCodingBlocks_BruteForce;
+    procedure SolveCodingBlocks;
     procedure Render(AStream: TStream);
   end;
 
@@ -500,7 +505,16 @@ begin
   codingBlocks[0] := codesBitCount;
 end;
 
+procedure TPiggyCoder.SolveCodingBlocks;
+begin
+  SolveCodingBlocks_BruteForce;
+  SolveCodingBlocks_GridReduce;
+end;
+
 procedure TPiggyCoder.SolveCodingBlocks_BruteForce;
+const
+  CLoCBC = 1;
+  CHiCBC = 7;
 var
   best: UInt64;
   locCodingBlocks: array[0 .. High(Byte)] of Byte;
@@ -512,7 +526,7 @@ begin
 
   SetLength(codingTable.LUT, highestCode + 1);
 
-  for iCBC := 1 to 7 do
+  for iCBC := CLoCBC to CHiCBC do
   begin
     FillChar(locCodingBlocks, SizeOf(locCodingBlocks), 0);
 
@@ -549,6 +563,55 @@ begin
   end;
 end;
 
+procedure TPiggyCoder.SolveCodingBlocks_GridReduce;
+const
+  CHiCBC = 14;
+var
+  best: UInt64;
+  iCBC, iCB: ShortInt;
+  curSize: UInt64;
+  X, GridExtents: TDoubleDynArray;
+  GridSize: TIntegerDynArray;
+begin
+  SetLength(X, 1);
+  SetLength(GridExtents, 1);
+  SetLength(GridSize, 1);
+
+  SetLength(X, codingBlocksCount);
+  SetLength(GridExtents, codingBlocksCount);
+  SetLength(GridSize, codingBlocksCount);
+
+  for iCB := 0 to codingBlocksCount - 1 do
+  begin
+    X[iCB] := codingBlocks[iCB];
+    GridExtents[iCB] := codesBitCount * 0.25;
+    GridSize[iCB] := 10;
+  end;
+  best := Round(GREvalCodingSize(X, nil));
+
+  for iCBC := codingBlocksCount + 1 to CHiCBC do
+  begin
+    SetLength(X, iCBC);
+    SetLength(GridExtents, iCBC);
+    SetLength(GridSize, iCBC);
+
+    X[iCBC - 1] := X[iCBC - 2];
+    GridExtents[iCBC - 1] := GridExtents[iCBC - 2];
+    GridSize[iCBC - 1] := GridSize[iCBC - 2];
+
+    curSize := Round(GridReduceMinimize(@GREvalCodingSize, X, GridSize, GridExtents, 0.025));
+
+    if (curSize < High(Integer)) and (curSize < best) then
+    begin
+      best := curSize;
+      codingBlocksCount := iCBC;
+      for iCB := 0 to iCBC - 1 do
+        codingBlocks[iCB] := EnsureRange(Trunc(X[iCB]), 0, codesBitCount);
+    end;
+  end;
+
+end;
+
 procedure TPiggyCoder.Render(AStream: TStream);
 var
   built: Boolean;
@@ -562,6 +625,23 @@ begin
   Assert(built);
 
   InternalRender(AStream, codingTable);
+end;
+
+function TPiggyCoder.GREvalCodingSize(const AX: TDoubleDynArray; AData: Pointer): Double;
+var
+  iCB: Integer;
+  locCodingBlocks: array[0 .. High(Byte)] of Byte;
+  codingTable: TCodingTable;
+begin
+  Result := High(Cardinal);
+
+  for iCB := 0 to High(AX) do
+    locCodingBlocks[iCB] := EnsureRange(Trunc(AX[iCB]), 0, codesBitCount);
+
+  SetLength(codingTable.LUT, highestCode + 1);
+
+  if BuildCodingTable(Length(AX), locCodingBlocks, codingTable) then
+    Result := InternalRender(nil, codingTable);
 end;
 
 function TPiggyCoder.BuildCodingTable(ACodingBlocksCount: Byte; const ACodingBlocks: array of Byte;
@@ -742,7 +822,7 @@ var
   data: TDoubleDynArray;
 begin
   SetLength(data, frame.encoder.ChunkSize);
-  TEncoder.ConvolveDCT(frame.encoder.ChunkSize, @AFeatures[0], @data[0], @frame.encoder.InvDCTLut[0]);
+  TEncoder.ConvolveDCT(frame.encoder.ChunkSize, AFeatures, @data[0], @frame.encoder.InvDCTLut[0]);
 
   SetLength(dstData, frame.encoder.ChunkSize);
   for iSample := 0 to High(data) do
@@ -1304,7 +1384,7 @@ begin
 
   dstPiggyCoder.Free;
   dstPiggyCoder := TPiggyCoder.Create(piggyCodes, reducedChunks.Count - 1);
-  dstPiggyCoder.SolveCodingBlocks_BruteForce;
+  dstPiggyCoder.SolveCodingBlocks;
 end;
 
 { TEncoder }
@@ -1837,14 +1917,14 @@ begin
     end;
 
   createWAV(ChannelCount, 16, SampleRate, FNTmp, ref);
-  DoExternalSOX(FNTmp, FNRef, 48000);
+  DoExternalSOX(FNTmp, FNRef, IfThen(SampleRate <= 44100, 44100, 48000));
 
   createWAV(ChannelCount, 16, SampleRate, FNTmp, tst);
-  DoExternalSOX(FNTmp, FNTst, 48000);
+  DoExternalSOX(FNTmp, FNTst, IfThen(SampleRate <= 44100, 44100, 48000));
 
   Result := DoExternalEAQUAL(FNRef, FNTst, Verbz, UseDIX, -1);
 
-  DeleteFile(FNTst);
+  DeleteFile(FNTmp);
   DeleteFile(FNRef);
   DeleteFile(FNTst);
 end;
@@ -1971,6 +2051,7 @@ begin
       WriteLn(#9'-artist'#9'artist name tag (max. 31 chars); example: -artist"GliGli"');
       WriteLn(#9'-title'#9'song title tag (max. 31 chars); example: -title"SoundChunks Demo"');
 {$endif}
+      Writeln(#9'-eaqual'#9'use EAQUAL to evaluate audio quality');
       WriteLn(#9'-v'#9'verbose mode');
       Writeln('Development options:');
       WriteLn(#9'-d'#9'debug mode (outputs decoded WAVs)');
@@ -2049,6 +2130,9 @@ begin
 
       psyA :=  enc.ComputePsyADelta(enc.SrcData, enc.DstData);
       WriteLn('[PsyADelta] Linear:', psyA.Linear:12:6, ', mu-Law:', psyA.MuLaw:12:6);
+
+      if HasParam('-eaqual') then
+        enc.ComputeEAQUAL(False,True);
 
     finally
       enc.Free;
