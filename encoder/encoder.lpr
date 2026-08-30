@@ -263,7 +263,7 @@ type
     procedure MakeFrames;
     procedure MakeDstData;
 
-    function ComputeEAQUAL(UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
+    function ComputeEAQUAL(UseDIX, Verbz: Boolean): Double;
   end;
 
 
@@ -1110,8 +1110,8 @@ begin
   Assert(reducedChunks.Count <= CMaxChunksPerFrame);
 
 {$ifdef ATARI_STE}
-  Assert(plainChunks.Count div encoder.ChannelCount - 1 <= High(Word));
-  AStream.WriteWord(NtoBE(WORD(plainChunks.Count div encoder.ChannelCount - 1)));
+  Assert(plainChunks.Count div (encoder.ChannelCount * encoder.ChunksPerAttenuation) - 1 <= High(Word));
+  AStream.WriteWord(NtoBE(WORD(plainChunks.Count div (encoder.ChannelCount * encoder.ChunksPerAttenuation) - 1)));
 
   AStream.WriteByte((TLMC1992Filter(filter[0]).bass_level shl 4) or TLMC1992Filter(filter[0]).treb_level);
 
@@ -1178,13 +1178,18 @@ begin
 end;
 
 procedure TFrame.MakeFrame(AMakeCoding: Boolean);
+var
+  pass: Integer;
 begin
   MakeChunks;
   ComputeAttenuations;
-  Reduce;
-  Reconstruct;
-  Reduce;
-  Reconstruct;
+
+  for pass := 1 to 3 do
+  begin
+    Reduce;
+    Reconstruct;
+  end;
+
   MakeDstData;
   if AMakeCoding then
     MakeCoding;
@@ -1441,7 +1446,6 @@ end;
 procedure TEncoder.PrepareFrames;
 const
   CAttenuationMilliseconds = 2.0;
-  CVariableCodingRatio = 0.85;
 var
   iChannel, iSample, frmIdx, nextStart, psc, tentativeByteSize: Integer;
   frm: TFrame;
@@ -1493,7 +1497,7 @@ begin
 
     indexingCost :=
       (SampleCount * ChannelCount * (
-        Log2(ChunksPerFrame) * CVariableCodingRatio +
+        Log2(ChunksPerFrame) +
         1 {dstNegative} + 1 {dstReversed} +
         CMaxAttenuationBits / (ChunksPerAttenuation * ChannelCount)
       )) / (8 {bytes -> bits} * ChunkSize);
@@ -1599,11 +1603,13 @@ begin
   WriteLn('SampleCount = ', SampleCount);
   writeln('ChannelCount = ', ChannelCount);
   writeln('SampleRate = ', SampleRate);
-  writeln('ChunksPerFrame = ', ChunksPerFrame);
   writeln('FrameCount = ', FrameCount);
+  writeln('ChunksPerFrame = ', ChunksPerFrame);
 end;
 
 procedure TEncoder.MakeFrames;
+var
+  framesDone: Integer;
 
   procedure DoFrame(Index: PtrInt; Data: Pointer);
   begin
@@ -1611,12 +1617,14 @@ procedure TEncoder.MakeFrames;
       Frames[Index].MakeFrame
     else
       Frames[Index].SolveCompandingFilterSettings;
-    Write('.');
+
+    Write(InterLockedIncrement(framesDone):4, ' / ', FrameCount:4, #13);
   end;
 
 begin
   WriteLn('[MakeFrames]');
 
+  framesDone := 0;
   TMTPool.DoStandaloneLocalProc(@DoFrame, 0, FrameCount - 1, Min(NumberOfProcessors, FrameCount));
   WriteLn;
 end;
@@ -1636,7 +1644,7 @@ begin
   ChunkSize := 6;
   ChunksPerFrame := 256;
   ChunksPerAttenuation := 36;
-  FrameLength := 1000.0 / 3; // in ms
+  FrameLength := 1000; // in ms
   VariableFrameSizeRatio := 1.0;
   NoSolveFilterSettings := False;
   GainFactor := Power(10.0, -4.5 / 20.0);
@@ -1808,18 +1816,30 @@ begin
   Result.MuLaw := Result.MuLaw / Length(dctA);
 end;
 
-function TEncoder.ComputeEAQUAL(UseDIX, Verbz: Boolean; const smpRef, smpTst: TSmallIntDynArray): Double;
+function TEncoder.ComputeEAQUAL(UseDIX, Verbz: Boolean): Double;
 var
+  i, j: Integer;
   FNTmp, FNRef, FNTst: String;
+  ref, tst: TSmallIntDynArray;
 begin
   FNTmp := GetTempFileName('', 'tmp-'+IntToStr(GetCurrentThreadId))+'.wav';
   FNRef := GetTempFileName('', 'ref-'+IntToStr(GetCurrentThreadId))+'.wav';
   FNTst := GetTempFileName('', 'tst-'+IntToStr(GetCurrentThreadId))+'.wav';
 
-  createWAV(ChannelCount, 16, SampleRate, FNTmp, smpRef);
+  SetLength(ref, SampleCount * ChannelCount);
+  SetLength(tst, SampleCount * ChannelCount);
+
+  for i := 0 to SampleCount - 1 do
+    for j := 0 to ChannelCount - 1 do
+    begin
+      ref[i * ChannelCount + j] := SrcData[j, i];
+      tst[i * ChannelCount + j] := DstData[j, i];
+    end;
+
+  createWAV(ChannelCount, 16, SampleRate, FNTmp, ref);
   DoExternalSOX(FNTmp, FNRef, 48000);
 
-  createWAV(ChannelCount, 16, SampleRate, FNTmp, smpTst);
+  createWAV(ChannelCount, 16, SampleRate, FNTmp, tst);
   DoExternalSOX(FNTmp, FNTst, 48000);
 
   Result := DoExternalEAQUAL(FNRef, FNTst, Verbz, UseDIX, -1);
@@ -2004,7 +2024,7 @@ begin
 
       WriteLn('BitRate = ', FloatToStr(enc.BitRate));
       WriteLn('VariableFrameSizeRatio = ', FloatToStr(enc.VariableFrameSizeRatio));
-      WriteLn('FrameLength = ', enc.FrameLength:0:0);
+      WriteLn('FrameLength = ', enc.FrameLength:0:3);
       if enc.Verbose then
       begin
         WriteLn('ChunkSize = ', enc.ChunkSize);

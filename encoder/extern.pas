@@ -122,6 +122,9 @@ function NanDef(x, def: Double): Double; inline;
 
 function lerp(x, y, alpha: Double): Double; inline;
 function muLaw(x: Double): Double; inline;
+function invMuLaw(y: Double): Double; inline;
+function pseudoHuber(x: Double; delta: Double = 1.0): Double;
+function invPseudoHuber(y: Double; delta: Double = 1.0): Double;
 
 function NumberOfProcessors: Integer;
 function HalfNumberOfProcessors: Integer;
@@ -130,8 +133,6 @@ function QuarterNumberOfProcessors: Integer;
 procedure DoExternalSKLearn(Dataset: TDoubleDynArray2;  ClusterCount, Precision: Integer; Compiled, PrintProgress: Boolean; var Clusters: TIntegerDynArray; var Centroids: TDoubleDynArray2);
 procedure DoExternalSOX(AFNIn, AFNOut: String; SampleRate: Integer = 0; ForceMono: Boolean = False; Normalize: Boolean = False);
 function DoExternalEAQUAL(AFNRef, AFNTest: String; PrintStats, UseDIX: Boolean; BlockLength: Integer): Double;
-
-procedure LZCompress(ASourceStream: TStream; PrintProgress, Decompress: Boolean; ADestStream: TStream);
 
 procedure GenerateSVMLightData(Dataset: TDoubleDynArray2; Output: TStringList; Header: Boolean);
 function GenerateSVMLightFile(Dataset: TDoubleDynArray2; Header: Boolean): String;
@@ -185,6 +186,7 @@ const
   cBestPSNR = 20.0 * Ln(High(Word)) / Ln(10.0);
   cPhi = (1 + sqrt(5)) / 2;
   cInvPhi = 1 / cPhi;
+  CMuLawMu = 255.0;
 
 implementation
 
@@ -322,10 +324,23 @@ begin
 end;
 
 function muLaw(x: Double): Double;
-const
-  CMu = 255.0;
 begin
-  Result := Sign(x) * Ln(1.0 + CMu * Abs(x)) / Ln(1.0 + CMu);
+  Result := Sign(x) * Ln(1.0 + CMuLawMu * Abs(x)) / Ln(1.0 + CMuLawMu);
+end;
+
+function invMuLaw(y: Double): Double;
+begin
+  Result := Sign(y) * (Power(1.0 + CMuLawMu, Abs(y)) - 1) / CMuLawMu;
+end;
+
+function pseudoHuber(x: Double; delta: Double): Double;
+begin
+  Result := delta * (Sqrt(1.0 + Sqr(x / delta)) - 1.0);
+end;
+
+function invPseudoHuber(y: Double; delta: Double): Double;
+begin
+  Result := Sqrt(Sqr(y / delta + 1.0) - 1.0) * delta;
 end;
 
 function NumberOfProcessors: Integer;
@@ -537,49 +552,6 @@ begin
   end;
 end;
 
-procedure LZCompress(ASourceStream: TStream; PrintProgress, Decompress: Boolean; ADestStream: TStream);
-var
-  Process: TProcess;
-  RetCode: Integer;
-  Output, ErrOut, SrcFN, DstFN: String;
-  SrcStream, DstStream: TFileStream;
-begin
-  Process := TProcess.Create(nil);
-  Process.CurrentDirectory := ExtractFilePath(ParamStr(0));
-  Process.Executable := 'lzma.exe';
-
-  SrcFN := GetTempFileName('', 'lz-' + IntToStr(GetCurrentThreadId) + '.dat');
-  DstFN := ChangeFileExt(SrcFN, ExtractFileExt(SrcFN) + '.lzma');
-
-  SrcStream := TFileStream.Create(SrcFN, fmCreate or fmShareDenyWrite);
-  try
-    ASourceStream.Seek(0, soBeginning);
-    SrcStream.CopyFrom(ASourceStream, ASourceStream.Size);
-  finally
-    SrcStream.Free;
-  end;
-
-  if Decompress then
-    Process.Parameters.Add('d "' + SrcFN + '" "' + DstFN + '"')
-  else
-    Process.Parameters.Add('e "' + SrcFN + '" "' + DstFN + '" -lc0 -pb1');
-  Process.ShowWindow := swoHIDE;
-  Process.Priority := ppIdle;
-
-  RetCode := 0;
-  internalRuncommand(Process, Output, ErrOut, RetCode, PrintProgress); // destroys Process
-
-  DstStream := TFileStream.Create(DstFN, fmOpenRead or fmShareDenyWrite);
-  try
-    ADestStream.CopyFrom(DstStream, DstStream.Size);
-  finally
-    DstStream.Free;
-  end;
-
-  DeleteFile(PChar(SrcFN));
-  DeleteFile(PChar(DstFN));
-end;
-
 procedure DoExternalSKLearn(Dataset: TDoubleDynArray2; ClusterCount, Precision: Integer; Compiled, PrintProgress: Boolean;
   var Clusters: TIntegerDynArray; var Centroids: TDoubleDynArray2);
 var
@@ -669,7 +641,7 @@ begin
   end;
 end;
 
-procedure DoExternalSOX(AFNIn, AFNOut: String; SampleRate: Integer; ForceMono, Normalize: Boolean);
+procedure DoExternalSOX(AFNIn, AFNOut: String; SampleRate: Integer; ForceMono: Boolean; Normalize: Boolean);
 var
   i: Integer;
   Params, Output, ErrOut: String;
@@ -993,7 +965,28 @@ begin
   Result := bestFunc;
 end;
 
+procedure test_f_inv;
+const
+  CIter = 1000;
+var
+  iIter: Integer;
+  r: Double;
+begin
+  RandSeed := $42381337;
+
+  for iIter := 0 to CIter - 1 do
+  begin
+    r := Random;
+    Assert(SameValue(invMuLaw(muLaw(r)), r, 1e-12));
+    Assert(SameValue(muLaw(invMuLaw(r)), r, 1e-12));
+    Assert(SameValue(invPseudoHuber(pseudoHuber(r)), r, 1e-10));
+    Assert(SameValue(pseudoHuber(invPseudoHuber(r)), r, 1e-10));
+  end;
+end;
+
+
 initialization
+  test_f_inv;
   GetLocaleFormatSettings(LOCALE_INVARIANT, GInvariantFormatSettings);
   GNumberOfProcessors := GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
 end.
