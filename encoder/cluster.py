@@ -18,8 +18,8 @@ data = np.delete(data, 0, 1)
 
 # clus = cluster.AgglomerativeClustering(n_clusters = args.n)
 # clus = cluster.KMeans(n_clusters = args.n, verbose = args.d, tol = args.t, random_state = 42, precompute_distances = True, copy_x = False, algorithm = 'full')
-clus = cluster.Birch(n_clusters = args.n, copy = False, threshold = 0.001, branching_factor = 50)
-# clus = cluster.SpectralClustering(n_clusters = args.n, assign_labels = 'discretize', affinity = 'nearest_neighbors', n_neighbors = 15, random_state = 42, eigen_tol = args.t)
+# clus = cluster.Birch(n_clusters = args.n, copy = False, threshold = 0.001, branching_factor = 50)
+clus = cluster.SpectralClustering(n_clusters = args.n, assign_labels = 'discretize', affinity = 'nearest_neighbors', n_neighbors = 15, random_state = 42, eigen_tol = args.t)
 
 clus.fit(data)
 

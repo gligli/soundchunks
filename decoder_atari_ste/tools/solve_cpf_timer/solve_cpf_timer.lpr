@@ -5,7 +5,7 @@ const
   CMFPFreq = 2457600.0;
   CSoundFreq = 8010613.33333333333333333333;
   CSoundDiv = 320;
-  CChunkSize = 6;
+  CChunkSize = 7;
   CMFPDivs: array[0 .. 6] of Integer = (4, 10, 16, 50, 64, 100, 200);
 
 var
@@ -18,7 +18,7 @@ begin
   bestCPF := -1;
   bestMFPDiv := -1;
   bestMFPData := -1;
-  for iCPF := 36 to 40 do
+  for iCPF := 32 to 42 do
   begin
     v := iCPF * CSoundDiv * CChunkSize / CSoundFreq;
     for iMFPDiv := Low(CMFPDivs) to High(CMFPDivs) do

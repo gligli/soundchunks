@@ -514,7 +514,7 @@ end;
 procedure TPiggyCoder.SolveCodingBlocks_BruteForce;
 const
   CLoCBC = 1;
-  CHiCBC = 7;
+  CHiCBC = 6;
 var
   best: UInt64;
   locCodingBlocks: array[0 .. High(Byte)] of Byte;
@@ -1264,7 +1264,7 @@ begin
   MakeChunks;
   ComputeAttenuations;
 
-  for pass := 1 to 3 do
+  for pass := 1 to 2 do
   begin
     Reduce;
     Reconstruct;
@@ -1526,12 +1526,15 @@ end;
 procedure TEncoder.PrepareFrames;
 const
   CAttenuationMilliseconds = 2.0;
+  CVFRTransitionFreq = 250.0;
 var
-  iChannel, iSample, frmIdx, nextStart, psc, tentativeByteSize: Integer;
+  iChannel, iSample, iCPA, frmIdx, nextStart, psc, tentativeByteSize, offset, vfrDctSz: Integer;
   frm: TFrame;
   headerCost, chunksCost, indexingCost: Double;
-  totalPower, perFramePower, curPower, smp: Double;
-  flt: array of TEmphasisFilter;
+  totalPower, perFramePower, curPower, smp, acc: Double;
+
+  tst: TSmallIntDynArray;
+  vfr, vfrSigmoid, vfrBuf, vfrDCT, vfrDCTLUT: TDoubleDynArray;
 begin
   WriteLn('[PrepareFrames]');
 
@@ -1610,75 +1613,99 @@ begin
 
   // pass 2
 
-  SetLength(flt, ChannelCount);
-  for iChannel := 0 to ChannelCount - 1 do
-    flt[iChannel] := CreateEmphasisFilter;
-  try
-    totalPower := 0;
-    for iSample := 0 to SampleCount - 1 do
+  vfrDctSz := min(Round((SampleRate * 0.5 / CVFRTransitionFreq) + 1), BlockSampleCount);
+
+  SetLength(vfrDCTLUT, Sqr(BlockSampleCount));
+  ComputeDCTLut(BlockSampleCount, @vfrDCTLUT[0]);
+
+  SetLength(vfrSigmoid, BlockSampleCount);
+  for iSample := 0 to BlockSampleCount - 1 do
+    vfrSigmoid[iSample] := TanH((iSample - (BlockSampleCount - 1 - vfrDctSz)) * 2.0 * pi / BlockSampleCount) * 0.5 + 0.5;
+
+  SetLength(vfrBuf, BlockSampleCount);
+  SetLength(vfrDCT, BlockSampleCount);
+  SetLength(vfr, SampleCount div BlockSampleCount);
+
+  SetLength(tst, SampleCount);
+
+  totalPower := 0;
+  for iCPA := 0 to SampleCount div BlockSampleCount - 1 do
+  begin
+    offset := iCPA * BlockSampleCount;
+
+    for iSample := 0 to BlockSampleCount - 1 do
     begin
-      smp := 0;
+      acc := 0.0;
       for iChannel := 0 to ChannelCount - 1 do
-        smp += Sqr(flt[iChannel].PreFilter(SrcData[iChannel, iSample]));
-      smp := Round(Sqrt(smp / ChannelCount));
-
-      totalPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
+        acc += SrcData[iChannel, offset + iSample];
+      vfrBuf[iSample] := acc / ChannelCount;
     end;
 
-    perFramePower := totalPower / FrameCount;
+    ConvolveDCT(BlockSampleCount, @vfrBuf[0], @vfrDCT[0], @vfrDCTLUT[0]);
 
-    if Verbose then
+    acc := 0.0;
+    smp := 0.0;
+    for iSample := 0 to BlockSampleCount - 1 do
     begin
-      writeln('TotalPower = ', Round(totalPower / High(SmallInt)));
-      writeln('PerFramePower = ', Round(perFramePower / High(SmallInt)));
+      acc += vfrSigmoid[iSample];
+      smp += Sqr(vfrDCT[iSample]) * vfrSigmoid[iSample];
     end;
+    smp := Sqrt(smp / acc);
 
-    for iChannel := 0 to ChannelCount - 1 do
-      flt[iChannel].Init;
+    vfr[iCPA] := lerp(1.0, smp, VariableFrameSizeRatio);
 
-    frmIdx := 0;
-    nextStart := 0;
-    curPower := 0;
-    SetLength(Frames, FrameCount);
-    for iSample := 0 to SampleCount - 1 do
-    begin
-      smp := 0;
-      for iChannel := 0 to ChannelCount - 1 do
-        smp += Sqr(flt[iChannel].PreFilter(SrcData[iChannel, iSample]));
-      smp := Round(Sqrt(smp / ChannelCount));
+    totalPower += vfr[iCPA];
 
-      curPower += Round(lerp(1.0, smp, VariableFrameSizeRatio));
-
-      if (iSample mod BlockSampleCount = 0) and (curPower >= perFramePower) then
-      begin
-        if frmIdx >= Length(Frames) then
-          SetLength(Frames, frmIdx + 1);
-
-        frm := TFrame.Create(Self, frmIdx, nextStart, iSample - 1);
-        Frames[frmIdx] := frm;
-        Inc(frmIdx);
-
-        curPower := 0;
-        nextStart := iSample;
-      end;
-    end;
-
-    if frmIdx >= Length(Frames) then
-      SetLength(Frames, frmIdx + 1);
-
-    frm := TFrame.Create(Self, frmIdx, nextStart, SampleCount - 1);
-    Frames[frmIdx] := frm;
-    Inc(frmIdx);
-
-    SetLength(Frames, frmIdx);
-    FrameCount := frmIdx;
-
-    // set yakmo threading
-    yakmo_set_num_threads(EnsureRange(NumberOfProcessors div FrameCount, 1, HalfNumberOfProcessors));
-  finally
-    for iChannel := 0 to ChannelCount - 1 do
-      flt[iChannel].Free;
+    for iSample := 0 to BlockSampleCount - 1 do
+      tst[offset + iSample] := Round(smp);
   end;
+
+  createWAV(1, 16, SampleRate, InputFN + '.vfr.wav', tst);
+
+  perFramePower := totalPower / FrameCount;
+
+  if Verbose then
+  begin
+    writeln('TotalPower = ', Round(totalPower / High(SmallInt)));
+    writeln('PerFramePower = ', Round(perFramePower / High(SmallInt)));
+  end;
+
+  frmIdx := 0;
+  nextStart := 0;
+  curPower := 0;
+  SetLength(Frames, FrameCount);
+  for iCPA := 0 to SampleCount div BlockSampleCount - 1 do
+  begin
+    offset := iCPA * BlockSampleCount;
+
+    curPower += vfr[iCPA];
+
+    if curPower >= perFramePower then
+    begin
+      if frmIdx >= Length(Frames) then
+        SetLength(Frames, frmIdx + 1);
+
+      frm := TFrame.Create(Self, frmIdx, nextStart, offset - 1);
+      Frames[frmIdx] := frm;
+      Inc(frmIdx);
+
+      curPower := 0;
+      nextStart := offset;
+    end;
+  end;
+
+  if frmIdx >= Length(Frames) then
+    SetLength(Frames, frmIdx + 1);
+
+  frm := TFrame.Create(Self, frmIdx, nextStart, SampleCount - 1);
+  Frames[frmIdx] := frm;
+  Inc(frmIdx);
+
+  SetLength(Frames, frmIdx);
+  FrameCount := frmIdx;
+
+  // set yakmo threading
+  yakmo_set_num_threads(EnsureRange(NumberOfProcessors div FrameCount, 1, HalfNumberOfProcessors));
 
   WriteLn('SampleCount = ', SampleCount);
   writeln('ChannelCount = ', ChannelCount);
@@ -1721,10 +1748,10 @@ begin
   Precision := 3;
 
 {$ifdef ATARI_STE}
-  ChunkSize := 6;
+  ChunkSize := 7;
   ChunksPerFrame := 256;
-  ChunksPerAttenuation := 36;
-  FrameLength := 1000; // in ms
+  ChunksPerAttenuation := 39;
+  FrameLength := 500; // in ms
   VariableFrameSizeRatio := 1.0;
   NoSolveFilterSettings := False;
   GainFactor := Power(10.0, -4.5 / 20.0);
