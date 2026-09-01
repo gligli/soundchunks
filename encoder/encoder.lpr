@@ -229,8 +229,6 @@ type
     ChunksPerAttenuation: Integer;
     FrameCount: Integer;
 
-    GainFactor: Double;
-
     SrcHeader: array[$00..$2b] of Byte;
     SrcData: TSmallIntDynArray2;
     DstData: TSmallIntDynArray2;
@@ -242,9 +240,9 @@ type
     function CreateEmphasisFilter: TEmphasisFilter;
 
     class function make16BitSample(smp: Double): SmallInt;
-    class function makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean; gain: Double): TOutputSample;
+    class function makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean): TOutputSample;
     class function makeFloatSample(smp: SmallInt): Double;
-    class function makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean; gain: Double): Double;
+    class function makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean): Double;
     class function SolveAttenuation(chunkSz: Integer; samples: PDouble): Byte;
     class function ComputeAttenuation(Attenuation: Integer): Double;
     class procedure ComputeDCTLut(chunkSz: Integer; lut: PDouble);
@@ -810,7 +808,7 @@ var
 begin
   SetLength(data, frame.encoder.ChunkSize);
   for iSample := 0 to High(data) do
-    data[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, frame.encoder.ChunkSize - 1 - iSample, iSample)], 2, dstAttenuation, dstNegative, 1.0).AsDouble;
+    data[iSample] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, frame.encoder.ChunkSize - 1 - iSample, iSample)], 2, dstAttenuation, dstNegative).AsDouble;
 
   SetLength(Result, frame.encoder.ChunkSize);
   TEncoder.ConvolveDCT(Length(data), @data[0], @Result[0], @frame.encoder.DCTLut[0]);
@@ -826,7 +824,7 @@ begin
 
   SetLength(dstData, frame.encoder.ChunkSize);
   for iSample := 0 to High(data) do
-    dstData[iSample] := TEncoder.makeOutputSample(data[iSample], frame.encoder.ChunkBitDepth, 0, False, frame.encoder.GainFactor).AsInt;
+    dstData[iSample] := TEncoder.makeOutputSample(data[iSample], frame.encoder.ChunkBitDepth, 0, False).AsInt;
 end;
 
 procedure TChunk.ComputeDstAttributes;
@@ -867,7 +865,7 @@ var
 begin
   SetLength(dstData, frame.encoder.ChunkSize);
   for i := 0 to High(dstData) do
-    dstData[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(dstData) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative, frame.encoder.GainFactor).AsInt;
+    dstData[i] := TEncoder.makeOutputSample(srcData[IfThen(dstReversed, High(dstData) - i, i)], frame.encoder.ChunkBitDepth, dstAttenuation, dstNegative).AsInt;
 end;
 
 constructor TFrame.Create(enc: TEncoder; idx, startSmp, endSmp: Integer);
@@ -1116,10 +1114,10 @@ begin
 
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
-      Dataset[dsIdx + 0, colCount + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, False, encoder.GainFactor);
-      Dataset[dsIdx + 1, colCount + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, True, encoder.GainFactor);
-      Dataset[dsIdx + 2, colCount + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, False, encoder.GainFactor);
-      Dataset[dsIdx + 3, colCount + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, True, encoder.GainFactor);
+      Dataset[dsIdx + 0, colCount + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, False);
+      Dataset[dsIdx + 1, colCount + iSample] := TEncoder.makeFloatSample(chunk.dstData[iSample], encoder.ChunkBitDepth, 0, True);
+      Dataset[dsIdx + 2, colCount + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, False);
+      Dataset[dsIdx + 3, colCount + iSample] := TEncoder.makeFloatSample(chunk.dstData[encoder.ChunkSize - 1 - iSample], encoder.ChunkBitDepth, 0, True);
     end;
 
     for iDS := 0 to 3 do
@@ -1344,7 +1342,7 @@ begin
 
     for iSample := 0 to encoder.ChunkSize - 1 do
     begin
-      smp := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, encoder.ChunkSize - 1 - iSample, iSample)], encoder.ChunkBitDepth, chunk.dstAttenuation, chunk.dstNegative, encoder.GainFactor);
+      smp := TEncoder.makeFloatSample(chunk.reducedChunk.dstData[IfThen(chunk.dstReversed, encoder.ChunkSize - 1 - iSample, iSample)], encoder.ChunkBitDepth, chunk.dstAttenuation, chunk.dstNegative);
 
       if InRange(pos[chunk.channel], 0, High(dstData[chunk.channel])) then
         dstData[chunk.channel, pos[chunk.channel]] := filter[chunk.channel].DeFilter(smp);
@@ -1533,7 +1531,6 @@ var
   headerCost, chunksCost, indexingCost: Double;
   totalPower, perFramePower, curPower, smp, acc: Double;
 
-  tst: TSmallIntDynArray;
   vfr, vfrSigmoid, vfrBuf, vfrDCT, vfrDCTLUT: TDoubleDynArray;
 begin
   WriteLn('[PrepareFrames]');
@@ -1626,8 +1623,6 @@ begin
   SetLength(vfrDCT, BlockSampleCount);
   SetLength(vfr, SampleCount div BlockSampleCount);
 
-  SetLength(tst, SampleCount);
-
   totalPower := 0;
   for iCPA := 0 to SampleCount div BlockSampleCount - 1 do
   begin
@@ -1655,12 +1650,7 @@ begin
     vfr[iCPA] := lerp(1.0, smp, VariableFrameSizeRatio);
 
     totalPower += vfr[iCPA];
-
-    for iSample := 0 to BlockSampleCount - 1 do
-      tst[offset + iSample] := Round(smp);
   end;
-
-  createWAV(1, 16, SampleRate, InputFN + '.vfr.wav', tst);
 
   perFramePower := totalPower / FrameCount;
 
@@ -1748,13 +1738,12 @@ begin
   Precision := 3;
 
 {$ifdef ATARI_STE}
-  ChunkSize := 7;
+  ChunkSize := 6;
   ChunksPerFrame := 256;
-  ChunksPerAttenuation := 39;
+  ChunksPerAttenuation := 36;
   FrameLength := 500; // in ms
   VariableFrameSizeRatio := 1.0;
   NoSolveFilterSettings := False;
-  GainFactor := Power(10.0, -4.5 / 20.0);
 {$else}
   ChunkSize := 4;
   ChunksPerAttenuation := 16;
@@ -1762,7 +1751,6 @@ begin
   VariableFrameSizeRatio := 1.0;
   ChunksPerFrame := 8192;
   NoSolveFilterSettings := True;
-  GainFactor := 1.0;
 {$endif}
 end;
 
@@ -1795,7 +1783,8 @@ function TEncoder.CreateEmphasisFilter: TEmphasisFilter;
 begin
 {$ifdef ATARI_STE}
   Result := TLMC1992Filter.Create(SampleRate);
-  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.NEUTRAL_TONE + 3, TLMC1992Filter.NEUTRAL_TONE - 3);
+  // +4dB bass is the max the STe can take before staturating in a LMC1992 intermediate stage
+  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.NEUTRAL_TONE + 2, TLMC1992Filter.NEUTRAL_TONE - 3);
 {$else}
   Result := TDeltaFilter.Create(SampleRate);
 {$endif}
@@ -1811,23 +1800,21 @@ begin
   Result := smp / High(SmallInt);
 end;
 
-class function TEncoder.makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean; gain: Double): TOutputSample;
+class function TEncoder.makeOutputSample(smp: Double; OutBitDepth, Attenuation: Byte; Negative: Boolean): TOutputSample;
 var
-  obd, loBnd, upBnd: Integer;
+  obd: Integer;
   smp16, coeff: Double;
 begin
   coeff := ComputeAttenuation(Attenuation);
 
   obd := (1 shl (OutBitDepth - 1)) - 1;
-  smp16 := smp * obd * coeff * gain;
+  smp16 := smp * obd * coeff;
   if Negative then smp16 := -smp16;
-  loBnd := Floor(-obd * gain);
-  upBnd := Ceil(obd * gain);
-  Result.AsInt := EnsureRange(Round(smp16), loBnd, upBnd);
-  Result.AsDouble := EnsureRange(smp16, loBnd, upBnd);
+  Result.AsInt := EnsureRange(Round(smp16), -obd, obd);
+  Result.AsDouble := EnsureRange(smp16, -obd, obd);
 end;
 
-class function TEncoder.makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean; gain: Double): Double;
+class function TEncoder.makeFloatSample(smp: Integer; OutBitDepth, Attenuation: Byte; Negative: Boolean): Double;
 var
   obd, coeff: Double;
 begin
@@ -1835,7 +1822,7 @@ begin
 
   obd := (1 shl (OutBitDepth - 1)) - 1;
   if Negative then smp := -smp;
-  Result := smp / (obd * coeff * gain);
+  Result := smp / (obd * coeff);
   Result := EnsureRange(Result, -1.0, 1.0);
 end;
 
@@ -2159,7 +2146,7 @@ begin
       WriteLn('[PsyADelta] Linear:', psyA.Linear:12:6, ', mu-Law:', psyA.MuLaw:12:6);
 
       if HasParam('-eaqual') then
-        enc.ComputeEAQUAL(False,True);
+        WriteLn('[EAQUAL] ODG:',enc.ComputeEAQUAL(False, False):7:3);
 
     finally
       enc.Free;
