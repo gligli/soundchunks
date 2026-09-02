@@ -3,7 +3,7 @@ program decoder;
 uses Types, SysUtils, Classes, Math, extern;
 
 const
-  CDecodedStreamVersion = 6;
+  CDecodedStreamVersion = 7;
   CMaxAttenuationBits = 6;
   CAttenuationLawDecibels = 0.75;
 
@@ -36,31 +36,32 @@ var
   end;
 
   procedure PrepareAttenuationLookup;
+  const
+    CInvLaw = Exp(-CAttenuationLawDecibels / 20.0 * Ln(10.0));
   var
     iAttenuation: Integer;
     isChunkBitDepth12: Boolean;
-    law, lawAcc: Double;
+    lawAcc: Double;
   begin
-    law := Power(10.0, -CAttenuationLawDecibels / 20.0);
     lawAcc := 1.0;
     for isChunkBitDepth12 := False to True do
       for iAttenuation := 0 to CMaxAttenuation do
       begin
         GAttenuationLookup[isChunkBitDepth12, iAttenuation] := round(CAttrMul[isChunkBitDepth12] * lawAcc);
-        lawAcc *= law;
+        lawAcc *= CInvLaw;
       end;
   end;
 
   procedure GSCUnpack(ASourceStream, ADestStream: TStream);
   var
+    StreamVersion, ChannelCount, ChunkBitDepth, ChunkSize, ChunkCount: Integer;
+    FrameLength, SampleRate, ChunksPerAttenuation: Integer;
     iChunk, iCPABlock, iSample, iChannel, iVariableCoding: Integer;
-    bitCount, variableCodingHeader, chunksAttenuation, finalSample, clippingErrors: Integer;
+    bitCount, variableCodingHeader, chunksAttenuation, finalSample, clippingErrors, bit: Integer;
     delta, b, s1, s2: Integer;
     channelSample: TIntegerDynArray;
     chunkIndex: TIntegerDynArray;
     chunkNegative, chunkReversed: TBooleanDynArray;
-    StreamVersion, ChannelCount, ChunkBitDepth, ChunkSize, ChunkCount: Integer;
-    FrameLength, SampleRate, PiggyMaxCodingBits, ChunksPerAttenuation: Integer;
     Chunks: TSmallIntDynArray2;
     piggyCodings: array of record
       BitSize: Byte;
@@ -113,8 +114,6 @@ var
         ChunkBitDepth := ASourceStream.ReadByte;
         ChunkSize := ASourceStream.ReadByte;
         SampleRate := ASourceStream.ReadDWord;
-        PiggyMaxCodingBits := SampleRate shr 24;
-        SampleRate := SampleRate and $ffffff;
         ChunksPerAttenuation := ASourceStream.ReadByte;
         ASourceStream.ReadByte;
 
@@ -130,7 +129,6 @@ var
         Assert(StreamVersion = CDecodedStreamVersion, 'StreamVersion not supported');
 
         SetLength(Chunks, ChunkCount, ChunkSize);
-        SetLength(piggyCodings, 1 shl PiggyMaxCodingBits);
 
         // depack Chunks
 
@@ -178,9 +176,12 @@ var
 
         Assert((FrameLength mod ChunksPerAttenuation) = 0, 'Frame should contain an integer number of ChunksPerAttenuation');
 
+        // frame start samples
         for iChannel := 0 to ChannelCount - 1 do
           channelSample[iChannel] := SmallInt(ASourceStream.ReadWord);
 
+        // frame piggy coder data
+        SetLength(piggyCodings, ASourceStream.ReadByte);
         for iVariableCoding := 0 to High(piggyCodings) do
           piggyCodings[iVariableCoding].BitSize := ASourceStream.ReadByte;
 
@@ -207,8 +208,11 @@ var
               chunkNegative[iChannel] := GetBits(1) <> 0;
               chunkReversed[iChannel] := GetBits(1) <> 0;
 
-              if GetBits(1) <> 0 then // has new header?
-                variableCodingHeader := GetBits(PiggyMaxCodingBits);
+              variableCodingHeader := 0;
+              repeat
+                bit := GetBits(1);
+                variableCodingHeader += bit;
+              until (bit = 0) or (variableCodingHeader >= High(piggyCodings));
 
               chunkIndex[iChannel] := piggyCodings[variableCodingHeader].CumulatedStart;
               chunkIndex[iChannel] += GetBits(piggyCodings[variableCodingHeader].BitSize);
@@ -222,7 +226,7 @@ var
                 if chunkNegative[iChannel] then
                   delta := -delta;
 
-                channelSample[iChannel] += delta;
+                channelSample[iChannel] := channelSample[iChannel] - SarLongint(channelSample[iChannel], 2) + delta;
 
                 finalSample := channelSample[iChannel];
                 if not InRange(finalSample, Low(SmallInt), High(SmallInt)) then
