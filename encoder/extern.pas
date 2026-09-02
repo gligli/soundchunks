@@ -16,7 +16,7 @@ type
   TIntegerDynArray2 = array of TIntegerDynArray;
 
   { format of WAV file header }
-  TWavHeader = record         { parameter description }
+  TWavHeader = packed record         { parameter description }
     rId             : longint; { 'RIFF'  4 characters }
     rLen            : longint; { length of DATA + FORMAT chunk }
     { FORMAT CHUNK }
