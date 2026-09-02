@@ -119,10 +119,12 @@ type
     FCodingBlocksCount: Byte;
     FBestCodingSize: UInt64;
 
+    FFrequencies: TCardinalDynArray;
+
     function GREvalCodingSize(const AX: TDoubleDynArray; AData: Pointer): Double;
 
     function BuildCodingTable(ACodingBlocksCount: Byte; const ACodingBlocks: array of Byte; var ACodingTable: TCodingTable): Boolean;
-    function InternalRender(AStream: TStream; const ACodingTable: TCodingTable): UInt64;
+    function TestCoding(const ACodingTable: TCodingTable): UInt64;
 
     procedure SolveCodingBlocks_BruteForce;
     procedure SolveCodingBlocks_GridReduce;
@@ -500,12 +502,18 @@ end;
 { TPiggyCoder }
 
 constructor TPiggyCoder.Create(ACodes: TCodeArray; AHighestCode: Integer);
+var
+  iCode: Integer;
 begin
   FCodes := ACodes;
   FHighestCode := AHighestCode;
   FCodesBitCount := Ceil(Log2(FHighestCode + 1));
 
   FBestCodingSize := High(UInt64);
+
+  SetLength(FFrequencies, FHighestCode + 1);
+  for iCode := 0 to High(FCodes) do
+    Inc(FFrequencies[FCodes[iCode].Code]);
 
   // dumb default (need to call SolveCodingBlocks)
   FCodingBlocksCount := 1;
@@ -554,7 +562,7 @@ begin
 
       if BuildCodingTable(iCBC, locCodingBlocks, codingTable) then
       begin
-        curSize := InternalRender(nil, codingTable);
+        curSize := TestCoding(codingTable);
 
         if curSize < FBestCodingSize then
         begin
@@ -610,19 +618,101 @@ begin
   end;
 end;
 
+function TPiggyCoder.TestCoding(const ACodingTable: TCodingTable): UInt64;
+var
+  iCode: Integer;
+begin
+  // !\ keep synced with TPiggyCoder.Render
+
+{$ifdef ATARI_STE}
+  Result := (((ACodingTable.codingBlocksCount * 4 - 1) shr 4) + 1) shl 4;
+{$else}
+  Result := (ACodingTable.codingBlocksCount + 1) * BitSizeOf(Byte);
+{$endif}
+
+  for iCode := 0 to FHighestCode do
+    Result += FFrequencies[iCode] * ACodingTable.LUT[iCode].BitCount;
+end;
+
 procedure TPiggyCoder.Render(AStream: TStream);
+
+  procedure DoWord(AWord: UInt64);
+  begin
+{$ifdef ATARI_STE}
+    AStream.WriteWord(NtoBE(Word(AWord and $ffff)));
+{$else}
+    AStream.WriteWord(AWord and $ffff);
+{$endif}
+  end;
+
+  procedure DoByte(AByte: UInt64);
+  begin
+    AStream.WriteByte(AByte and $ff);
+  end;
+
 var
   built: Boolean;
+  iCode, iCodingBlocks, itemBitCnt, overallBitCnt, codeValue: Integer;
+  itemBits, overallBits: UInt64;
+  w: Word;
   codingTable: TCodingTable;
+  locCB: array[0 .. High(Byte)] of Byte;
 begin
-  Write(FCodingBlocksCount, ' ');
+  // !\ keep synced with TPiggyCoder.TestCoding
 
   SetLength(codingTable.LUT, FHighestCode + 1);
-
   built := BuildCodingTable(FCodingBlocksCount, FCodingBlocks, codingTable);
   Assert(built);
 
-  InternalRender(AStream, codingTable);
+{$ifdef ATARI_STE}
+  w := 0;
+  FillChar(locCB, SizeOf(locCB), 0);
+  Move(codingTable.codingBlocks, locCB, codingTable.codingBlocksCount);
+  for iCodingBlocks := 0 to ((codingTable.codingBlocksCount - 1) div 4 + 1) * 4 - 1 do
+  begin
+    w := locCB[iCodingBlocks] or (w shl 4);
+    if iCodingBlocks and 3 = 3 then
+      DoWord(w);
+  end;
+{$else}
+  DoByte(codingTable.codingBlocksCount);
+  for iCodingBlocks := 0 to codingTable.codingBlocksCount - 1 do
+    DoByte(codingTable.codingBlocks[iCodingBlocks]);
+{$endif}
+
+  overallBits := 0;
+  overallBitCnt := 0;
+
+  for iCode := 0 to High(FCodes) do
+  begin
+    itemBits := 0;
+    itemBitCnt := 0;
+
+    if FCodes[iCode].ExtraBitCount > 0 then
+    begin
+      itemBits := FCodes[iCode].ExtraBits or (itemBits shl FCodes[iCode].ExtraBitCount);
+      itemBitCnt += FCodes[iCode].ExtraBitCount;
+    end;
+
+    codeValue := FCodes[iCode].Code;
+    itemBits := codingTable.LUT[codeValue].Bits or (itemBits shl codingTable.LUT[codeValue].BitCount);
+    itemBitCnt += codingTable.LUT[codeValue].BitCount;
+
+    overallBits := itemBits or (overallBits shl itemBitCnt);
+    overallBitCnt += itemBitCnt;
+    while overallBitCnt >= 16 do
+    begin
+      overallBitCnt -= 16;
+      DoWord(overallBits shr overallBitCnt);
+      overallBits := overallBits and ((1 shl overallBitCnt) - 1);
+    end;
+  end;
+
+  if overallBitCnt > 0 then
+  begin
+    Assert(overallBitCnt <= 16);
+    DoWord(overallBits shl (16 - overallBitCnt));
+  end;
 end;
 
 function TPiggyCoder.GREvalCodingSize(const AX: TDoubleDynArray; AData: Pointer): Double;
@@ -639,7 +729,7 @@ begin
   SetLength(codingTable.LUT, FHighestCode + 1);
 
   if BuildCodingTable(Length(AX), locCodingBlocks, codingTable) then
-    Result := InternalRender(nil, codingTable);
+    Result := TestCoding(codingTable);
 end;
 
 function TPiggyCoder.BuildCodingTable(ACodingBlocksCount: Byte; const ACodingBlocks: array of Byte;
@@ -698,91 +788,6 @@ begin
 
     ACodingTable.LUT[iCode].Bits := itemBits;
     ACodingTable.LUT[iCode].BitCount := itemBitCnt;
-  end;
-end;
-
-function TPiggyCoder.InternalRender(AStream: TStream; const ACodingTable: TCodingTable): UInt64;
-
-  procedure DoWord(AWord: UInt64);
-  begin
-    if Assigned(AStream) then
-    begin
-{$ifdef ATARI_STE}
-      AStream.WriteWord(NtoBE(Word(AWord and $ffff)));
-{$else}
-      AStream.WriteWord(AWord and $ffff);
-{$endif}
-    end;
-
-    Result += BitSizeOf(Word);
-  end;
-
-  procedure DoByte(AByte: UInt64);
-  begin
-    if Assigned(AStream) then
-    begin
-      AStream.WriteByte(AByte and $ff);
-    end;
-
-    Result += BitSizeOf(Byte);
-  end;
-
-var
-  iCode, iCodingBlocks, itemBitCnt, overallBitCnt, codeValue: Integer;
-  itemBits, overallBits: UInt64;
-  w: Word;
-  locCB: array[0 .. High(Byte)] of Byte;
-begin
-  Result := 0;
-
-{$ifdef ATARI_STE}
-  w := 0;
-  FillChar(locCB, SizeOf(locCB), 0);
-  Move(ACodingTable.codingBlocks, locCB, ACodingTable.codingBlocksCount);
-  for iCodingBlocks := 0 to ((ACodingTable.codingBlocksCount - 1) div 4 + 1) * 4 - 1 do
-  begin
-    w := locCB[iCodingBlocks] or (w shl 4);
-    if iCodingBlocks and 3 = 3 then
-      DoWord(w);
-  end;
-{$else}
-  DoByte(ACodingTable.codingBlocksCount);
-  for iCodingBlocks := 0 to ACodingTable.codingBlocksCount - 1 do
-    DoByte(ACodingTable.codingBlocks[iCodingBlocks]);
-{$endif}
-
-  overallBits := 0;
-  overallBitCnt := 0;
-
-  for iCode := 0 to High(FCodes) do
-  begin
-    itemBits := 0;
-    itemBitCnt := 0;
-
-    if FCodes[iCode].ExtraBitCount > 0 then
-    begin
-      itemBits := FCodes[iCode].ExtraBits or (itemBits shl FCodes[iCode].ExtraBitCount);
-      itemBitCnt += FCodes[iCode].ExtraBitCount;
-    end;
-
-    codeValue := FCodes[iCode].Code;
-    itemBits := ACodingTable.LUT[codeValue].Bits or (itemBits shl ACodingTable.LUT[codeValue].BitCount);
-    itemBitCnt += ACodingTable.LUT[codeValue].BitCount;
-
-    overallBits := itemBits or (overallBits shl itemBitCnt);
-    overallBitCnt += itemBitCnt;
-    while overallBitCnt >= 16 do
-    begin
-      overallBitCnt -= 16;
-      DoWord(overallBits shr overallBitCnt);
-      overallBits := overallBits and ((1 shl overallBitCnt) - 1);
-    end;
-  end;
-
-  if overallBitCnt > 0 then
-  begin
-    Assert(overallBitCnt <= 16);
-    DoWord(overallBits shl (16 - overallBitCnt));
   end;
 end;
 
