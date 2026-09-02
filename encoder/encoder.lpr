@@ -111,12 +111,13 @@ type
       codingBlocks: array[0 .. High(Byte)] of Byte;
     end;
   private
-    codingBlocks: array[0 .. High(Byte)] of Byte;
-    highestCode: Cardinal;
-    codes: TCodeArray;
-    codesBitCount: Byte;
+    FCodingBlocks: array[0 .. High(Byte)] of Byte;
+    FHighestCode: Cardinal;
+    FCodes: TCodeArray;
+    FCodesBitCount: Byte;
 
-    codingBlocksCount: Cardinal;
+    FCodingBlocksCount: Byte;
+    FBestCodingSize: UInt64;
 
     function GREvalCodingSize(const AX: TDoubleDynArray; AData: Pointer): Double;
 
@@ -130,6 +131,8 @@ type
 
     procedure SolveCodingBlocks;
     procedure Render(AStream: TStream);
+
+    property CodingBlocksCount: Byte read FCodingBlocksCount;
   end;
 
   { TChunk }
@@ -498,18 +501,22 @@ end;
 
 constructor TPiggyCoder.Create(ACodes: TCodeArray; AHighestCode: Integer);
 begin
-  codes := ACodes;
-  highestCode := AHighestCode;
-  codesBitCount := Ceil(Log2(highestCode + 1));
+  FCodes := ACodes;
+  FHighestCode := AHighestCode;
+  FCodesBitCount := Ceil(Log2(FHighestCode + 1));
 
-  // dumb default (need to call SolveCodingBlocks_BruteForce)
-  codingBlocksCount := 1;
-  codingBlocks[0] := codesBitCount;
+  FBestCodingSize := High(UInt64);
+
+  // dumb default (need to call SolveCodingBlocks)
+  FCodingBlocksCount := 1;
+  FCodingBlocks[0] := FCodesBitCount;
 end;
 
 procedure TPiggyCoder.SolveCodingBlocks;
 begin
-  SolveCodingBlocks_BruteForce;
+  if FHighestCode < 256 then
+    SolveCodingBlocks_BruteForce;
+
   SolveCodingBlocks_GridReduce;
 end;
 
@@ -518,15 +525,12 @@ const
   CLoCBC = 1;
   CHiCBC = 6;
 var
-  best: UInt64;
   locCodingBlocks: array[0 .. High(Byte)] of Byte;
   codingTable: TCodingTable;
   iCBC, iCB: ShortInt;
   curSize: UInt64;
 begin
-  best := High(UInt64);
-
-  SetLength(codingTable.LUT, highestCode + 1);
+  SetLength(codingTable.LUT, FHighestCode + 1);
 
   for iCBC := CLoCBC to CHiCBC do
   begin
@@ -537,7 +541,7 @@ begin
       Inc(locCodingBlocks[0]);
       for iCB := 0 to iCBC - 2 do
       begin
-        if locCodingBlocks[iCB] >= codesBitCount then
+        if locCodingBlocks[iCB] >= FCodesBitCount then
         begin
           locCodingBlocks[iCB] := 0;
           Inc(locCodingBlocks[iCB + 1]);
@@ -552,66 +556,58 @@ begin
       begin
         curSize := InternalRender(nil, codingTable);
 
-        if curSize < best then
+        if curSize < FBestCodingSize then
         begin
-          best := curSize;
-          codingBlocksCount := iCBC;
+          FBestCodingSize := curSize;
+          FCodingBlocksCount := iCBC;
           for iCB := 0 to iCBC - 1 do
-            codingBlocks[iCB] := locCodingBlocks[iCB];
+            FCodingBlocks[iCB] := locCodingBlocks[iCB];
         end;
       end;
 
-    until locCodingBlocks[iCBC - 1] >= codesBitCount;
+    until locCodingBlocks[iCBC - 1] >= FCodesBitCount;
   end;
 end;
 
 procedure TPiggyCoder.SolveCodingBlocks_GridReduce;
 const
-  CHiCBC = 14;
+  CLoCBC = 1;
+  CHiCBC = 16;
 var
-  best: UInt64;
   iCBC, iCB: ShortInt;
   curSize: UInt64;
   X, GridExtents: TDoubleDynArray;
   GridSize: TIntegerDynArray;
 begin
-  SetLength(X, 1);
-  SetLength(GridExtents, 1);
-  SetLength(GridSize, 1);
-
-  SetLength(X, codingBlocksCount);
-  SetLength(GridExtents, codingBlocksCount);
-  SetLength(GridSize, codingBlocksCount);
-
-  for iCB := 0 to codingBlocksCount - 1 do
-  begin
-    X[iCB] := codingBlocks[iCB];
-    GridExtents[iCB] := codesBitCount * 0.25;
-    GridSize[iCB] := 10;
-  end;
-  best := Round(GREvalCodingSize(X, nil));
-
-  for iCBC := codingBlocksCount + 1 to CHiCBC do
+  for iCBC := CLoCBC to CHiCBC do
   begin
     SetLength(X, iCBC);
     SetLength(GridExtents, iCBC);
     SetLength(GridSize, iCBC);
 
-    X[iCBC - 1] := X[iCBC - 2];
-    GridExtents[iCBC - 1] := GridExtents[iCBC - 2];
-    GridSize[iCBC - 1] := GridSize[iCBC - 2];
+    if iCBC = 1 then
+    begin
+      X[0] := FCodesBitCount;
+      GridExtents[0] := FCodesBitCount * 0.25;
+      GridSize[0] := 10;
+    end
+    else
+    begin
+      X[iCBC - 1] := X[iCBC - 2];
+      GridExtents[iCBC - 1] := GridExtents[iCBC - 2];
+      GridSize[iCBC - 1] := GridSize[iCBC - 2];
+    end;
 
     curSize := Round(GridReduceMinimize(@GREvalCodingSize, X, GridSize, GridExtents, 0.025));
 
-    if (curSize < High(Integer)) and (curSize < best) then
+    if (curSize < High(Integer)) and (curSize < FBestCodingSize) then
     begin
-      best := curSize;
-      codingBlocksCount := iCBC;
+      FBestCodingSize := curSize;
+      FCodingBlocksCount := iCBC;
       for iCB := 0 to iCBC - 1 do
-        codingBlocks[iCB] := EnsureRange(Trunc(X[iCB]), 0, codesBitCount);
+        FCodingBlocks[iCB] := EnsureRange(Trunc(X[iCB]), 0, FCodesBitCount);
     end;
   end;
-
 end;
 
 procedure TPiggyCoder.Render(AStream: TStream);
@@ -619,11 +615,11 @@ var
   built: Boolean;
   codingTable: TCodingTable;
 begin
-  Write(codingBlocksCount, ' ');
+  Write(FCodingBlocksCount, ' ');
 
-  SetLength(codingTable.LUT, highestCode + 1);
+  SetLength(codingTable.LUT, FHighestCode + 1);
 
-  built := BuildCodingTable(codingBlocksCount, codingBlocks, codingTable);
+  built := BuildCodingTable(FCodingBlocksCount, FCodingBlocks, codingTable);
   Assert(built);
 
   InternalRender(AStream, codingTable);
@@ -638,9 +634,9 @@ begin
   Result := High(Cardinal);
 
   for iCB := 0 to High(AX) do
-    locCodingBlocks[iCB] := EnsureRange(Trunc(AX[iCB]), 0, codesBitCount);
+    locCodingBlocks[iCB] := EnsureRange(Trunc(AX[iCB]), 0, FCodesBitCount);
 
-  SetLength(codingTable.LUT, highestCode + 1);
+  SetLength(codingTable.LUT, FHighestCode + 1);
 
   if BuildCodingTable(Length(AX), locCodingBlocks, codingTable) then
     Result := InternalRender(nil, codingTable);
@@ -658,13 +654,13 @@ begin
   cbSum := 0;
   for iCodingBlocks := 0 to ACodingBlocksCount - 1 do
     cbSum += ACodingBlocks[iCodingBlocks];
-  if cbSum < codesBitCount then
+  if cbSum < FCodesBitCount then
     Exit(False);
 
   ACodingTable.codingBlocksCount := ACodingBlocksCount;
   Move(ACodingBlocks, ACodingTable.codingBlocks, ACodingBlocksCount);
 
-  for iCode := 0 to highestCode do
+  for iCode := 0 to FHighestCode do
   begin
     itemBits := 0;
     itemBitCnt := 0;
@@ -734,25 +730,21 @@ function TPiggyCoder.InternalRender(AStream: TStream; const ACodingTable: TCodin
 var
   iCode, iCodingBlocks, itemBitCnt, overallBitCnt, codeValue: Integer;
   itemBits, overallBits: UInt64;
-  b: Byte;
+  w: Word;
   locCB: array[0 .. High(Byte)] of Byte;
 begin
   Result := 0;
 
 {$ifdef ATARI_STE}
-  b := 0;
+  w := 0;
+  FillChar(locCB, SizeOf(locCB), 0);
   Move(ACodingTable.codingBlocks, locCB, ACodingTable.codingBlocksCount);
-  locCB[ACodingTable.codingBlocksCount] := $f; // $f terminated list
-  for iCodingBlocks := 0 to (ACodingTable.codingBlocksCount + 1) + Ord(odd(ACodingTable.codingBlocksCount + 1)) - 1 do
-    if Odd(iCodingBlocks) then
-    begin
-      b := b or locCB[iCodingBlocks];
-      DoByte(b);
-    end
-    else
-    begin
-      b := locCB[iCodingBlocks] shl 4;
-    end;
+  for iCodingBlocks := 0 to ((ACodingTable.codingBlocksCount - 1) div 4 + 1) * 4 - 1 do
+  begin
+    w := locCB[iCodingBlocks] or (w shl 4);
+    if iCodingBlocks and 3 = 3 then
+      DoWord(w);
+  end;
 {$else}
   DoByte(ACodingTable.codingBlocksCount);
   for iCodingBlocks := 0 to ACodingTable.codingBlocksCount - 1 do
@@ -762,18 +754,18 @@ begin
   overallBits := 0;
   overallBitCnt := 0;
 
-  for iCode := 0 to High(codes) do
+  for iCode := 0 to High(FCodes) do
   begin
     itemBits := 0;
     itemBitCnt := 0;
 
-    if codes[iCode].ExtraBitCount > 0 then
+    if FCodes[iCode].ExtraBitCount > 0 then
     begin
-      itemBits := codes[iCode].ExtraBits or (itemBits shl codes[iCode].ExtraBitCount);
-      itemBitCnt += codes[iCode].ExtraBitCount;
+      itemBits := FCodes[iCode].ExtraBits or (itemBits shl FCodes[iCode].ExtraBitCount);
+      itemBitCnt += FCodes[iCode].ExtraBitCount;
     end;
 
-    codeValue := codes[iCode].Code;
+    codeValue := FCodes[iCode].Code;
     itemBits := ACodingTable.LUT[codeValue].Bits or (itemBits shl ACodingTable.LUT[codeValue].BitCount);
     itemBitCnt += ACodingTable.LUT[codeValue].BitCount;
 
@@ -1177,6 +1169,7 @@ begin
   AStream.WriteWord(NtoBE(WORD(plainChunks.Count div (encoder.ChannelCount * encoder.ChunksPerAttenuation) - 1)));
 
   AStream.WriteByte((TLMC1992Filter(filter[0]).bass_level shl 4) or TLMC1992Filter(filter[0]).treb_level);
+  AStream.WriteByte(dstPiggyCoder.CodingBlocksCount);
 
   Assert(encoder.ChunkBitDepth = 8, 'ChunkBitDepth not supported');
   cl := reducedChunks;

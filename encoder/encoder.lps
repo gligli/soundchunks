@@ -9,13 +9,13 @@
         <Filename Value="encoder.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="13"/>
-        <CursorPos X="14" Y="42"/>
+        <TopLine Value="100"/>
+        <CursorPos Y="127"/>
         <UsageCount Value="200"/>
         <Bookmarks Count="3">
-          <Item0 Y="1853" ID="3"/>
-          <Item1 Y="477" Left="1" Top="477" ID="1"/>
-          <Item2 Y="1137" Left="1" Top="1124" ID="2"/>
+          <Item0 Y="1846" ID="3"/>
+          <Item1 Y="480" Left="1" Top="480" ID="1"/>
+          <Item2 Y="1129" Left="1" Top="1116" ID="2"/>
         </Bookmarks>
         <Loaded Value="True"/>
       </Unit0>
@@ -95,7 +95,7 @@
         <EditorIndex Value="1"/>
         <TopLine Value="370"/>
         <CursorPos X="10" Y="397"/>
-        <UsageCount Value="12"/>
+        <UsageCount Value="14"/>
         <Loaded Value="True"/>
       </Unit11>
       <Unit12>
@@ -171,155 +171,156 @@
     <JumpHistory Count="30" HistoryIndex="29">
       <Position1>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1803" Column="63" TopLine="1779"/>
+        <Caret Line="114" Column="18" TopLine="85"/>
       </Position1>
       <Position2>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="245" Column="66" TopLine="218"/>
+        <Caret Line="115" Column="17" TopLine="85"/>
       </Position2>
       <Position3>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1803" Column="76" TopLine="1779"/>
+        <Caret Line="116" Column="11" TopLine="85"/>
       </Position3>
       <Position4>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="245" Column="80" TopLine="218"/>
+        <Caret Line="117" Column="19" TopLine="85"/>
       </Position4>
       <Position5>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1803" Column="97" TopLine="1779"/>
+        <Caret Line="119" Column="23" TopLine="85"/>
       </Position5>
       <Position6>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="245" Column="97" TopLine="218"/>
+        <Caret Line="120" Column="20" TopLine="85"/>
       </Position6>
       <Position7>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1817" Column="43" TopLine="1779"/>
+        <Caret Line="133" Column="13" TopLine="85"/>
       </Position7>
       <Position8>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="247" Column="43" TopLine="220"/>
+        <Caret Line="622" Column="3" TopLine="613"/>
       </Position8>
       <Position9>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1817" Column="62" TopLine="1779"/>
+        <Caret Line="133" Column="15" TopLine="106"/>
       </Position9>
       <Position10>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="247" Column="66" TopLine="220"/>
+        <Caret Line="624" Column="3" TopLine="613"/>
       </Position10>
       <Position11>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1817" Column="76" TopLine="1779"/>
+        <Caret Line="125" Column="15" TopLine="106"/>
       </Position11>
       <Position12>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="247" Column="80" TopLine="220"/>
+        <Caret Line="749" TopLine="705"/>
       </Position12>
       <Position13>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1817" Column="95" TopLine="1779"/>
+        <Caret Line="198" Column="14" TopLine="153"/>
       </Position13>
       <Position14>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="247" Column="97" TopLine="220"/>
+        <Caret Line="1172" Column="6" TopLine="1188"/>
       </Position14>
       <Position15>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1798" Column="42" TopLine="1761"/>
+        <Caret Line="133" Column="15" TopLine="106"/>
       </Position15>
       <Position16>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="246" Column="43" TopLine="219"/>
+        <Caret Line="618" Column="3" TopLine="613"/>
       </Position16>
       <Position17>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1793" Column="42" TopLine="1761"/>
+        <Caret Line="125" Column="14" TopLine="98"/>
       </Position17>
       <Position18>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="244" Column="43" TopLine="217"/>
+        <Caret Line="746" Column="8" TopLine="713"/>
       </Position18>
       <Position19>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1811" Column="6" TopLine="1776"/>
+        <Caret Line="128" Column="14" TopLine="98"/>
       </Position19>
       <Position20>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1805" Column="6" TopLine="1776"/>
+        <Caret Line="605" Column="9" TopLine="569"/>
       </Position20>
       <Position21>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1806" Column="8" TopLine="1776"/>
+        <Caret Line="198" Column="15" TopLine="156"/>
       </Position21>
       <Position22>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1795" Column="30" TopLine="1761"/>
+        <Caret Line="1225" Column="16" TopLine="1186"/>
       </Position22>
       <Position23>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="51" TopLine="3"/>
+        <Caret Line="132" Column="15" TopLine="116"/>
       </Position23>
       <Position24>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="321" Column="18" TopLine="318"/>
+        <Caret Line="517" Column="3" TopLine="515"/>
       </Position24>
       <Position25>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="53" Column="13" TopLine="24"/>
+        <Caret Line="127" Column="15" TopLine="105"/>
       </Position25>
       <Position26>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="192" Column="12" TopLine="156"/>
+        <Caret Line="530" Column="3" TopLine="523"/>
       </Position26>
       <Position27>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1098" Column="29" TopLine="1090"/>
+        <Caret Line="128" Column="15" TopLine="100"/>
       </Position27>
       <Position28>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1111" TopLine="1085"/>
+        <Caret Line="576" Column="3" TopLine="572"/>
       </Position28>
       <Position29>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1138" Column="60" TopLine="1113"/>
+        <Caret Line="127" Column="15" TopLine="101"/>
       </Position29>
       <Position30>
         <Filename Value="encoder.lpr"/>
-        <Caret Line="1105" Column="18" TopLine="1074"/>
+        <Caret Line="549" Column="6" TopLine="523"/>
       </Position30>
     </JumpHistory>
     <RunParams>
       <FormatVersion Value="2"/>
       <Modes ActiveMode="default"/>
     </RunParams>
-    <HistoryLists Count="2">
+    <HistoryLists Count="3">
       <List0 Name="LaunchingApplication" Type="File" Count="1">
         <Item1 Value="C:\Windows\system32\cmd.exe /C ${TargetCmdLine}"/>
       </List0>
       <List1 Name="CommandLineParameters" Count="20">
-        <Item1 Value="..\else3_st.wav ..\st__  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf28 -d"/>
-        <Item2 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf28 -d -py"/>
-        <Item3 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf28 -d"/>
-        <Item4 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf27 -d"/>
-        <Item5 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf27 -d"/>
-        <Item6 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf27 -d -py"/>
-        <Item7 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf48 -d -py"/>
-        <Item8 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf48 -d"/>
-        <Item9 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf48 -d -py -pr7"/>
-        <Item10 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf48 -d"/>
-        <Item11 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf40 -d"/>
-        <Item12 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf32 -d"/>
-        <Item13 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -br29 -d"/>
-        <Item14 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf20 -d"/>
-        <Item15 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf22 -d"/>
-        <Item16 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf28 -d"/>
-        <Item17 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf24 -d"/>
-        <Item18 Value="..\fr025_st9_mono.wav ..\fr025 -d -artist&quot;wayfinder&quot; -title&quot;fr-025 (single edit)&quot; -cpf23"/>
-        <Item19 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf20 -d -cpf20"/>
-        <Item20 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf20 -vfr0 -d"/>
+        <Item1 Value="..\else3_st.wav ..\st__  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf24 -d"/>
+        <Item2 Value="..\else3_st.wav ..\st__  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf28 -d"/>
+        <Item3 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf28 -d -py"/>
+        <Item4 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf28 -d"/>
+        <Item5 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf27 -d"/>
+        <Item6 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf27 -d"/>
+        <Item7 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf27 -d -py"/>
+        <Item8 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf48 -d -py"/>
+        <Item9 Value="..\else3_st.wav ..\st_  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf48 -d"/>
+        <Item10 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf48 -d -py -pr7"/>
+        <Item11 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf48 -d"/>
+        <Item12 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf40 -d"/>
+        <Item13 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf32 -d"/>
+        <Item14 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -br29 -d"/>
+        <Item15 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf20 -d"/>
+        <Item16 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf22 -d"/>
+        <Item17 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf28 -d"/>
+        <Item18 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf24 -d"/>
+        <Item19 Value="..\fr025_st9_mono.wav ..\fr025 -d -artist&quot;wayfinder&quot; -title&quot;fr-025 (single edit)&quot; -cpf23"/>
+        <Item20 Value="..\else3_st.wav ..\st  -artist&quot;GliGli&quot; -title&quot;Else3 lame_test&quot; -cpf20 -d -cpf20"/>
       </List1>
+      <List2 Name="WorkingDirectory" Type="File" Count="1"/>
     </HistoryLists>
   </ProjectSession>
   <Debugging>
