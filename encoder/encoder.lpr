@@ -207,6 +207,8 @@ type
   { TEncoder }
 
   TEncoder = class
+  const
+    cDCTDamping = 2.6;
   type
     TOutputSample = record
       AsInt: SmallInt;
@@ -1858,7 +1860,7 @@ begin
   begin
     for n := 0 to chunkSz - 1 do
     begin
-      lut^ := cos(pi / chunkSz * (n + 0.5) * k) * sqrt (2.0 / chunkSz);
+      lut^ := cos(pi / chunkSz * (n + 0.5) * k) * sqrt (2.0 / chunkSz) / (k + cDCTDamping);
       Inc(lut);
     end;
   end;
@@ -1870,11 +1872,11 @@ var
 begin
   for k := 0 to chunkSz - 1 do
   begin
-    lut^ := 0.5 * sqrt(2.0 / chunkSz);
+    lut^ := 0.5 * sqrt(2.0 / chunkSz) * (0 + cDCTDamping);
     Inc(lut);
     for n := 1 to chunkSz - 1 do
     begin
-      lut^ := cos(pi / chunkSz * (k + 0.5) * n) * sqrt(2.0 / chunkSz);
+      lut^ := cos(pi / chunkSz * (k + 0.5) * n) * sqrt(2.0 / chunkSz) * (n + cDCTDamping);
       Inc(lut);
     end;
   end;
