@@ -3,6 +3,7 @@ program encoder;
 {$mode objfpc}{$H+}
 
 uses
+  tbbmalloc,
   windows, Classes, sysutils, strutils, Types, fgl, math,
   extern, mtpool;
 
@@ -672,7 +673,10 @@ begin
   begin
     w := locCB[iCodingBlocks] or (w shl 4);
     if iCodingBlocks and 3 = 3 then
+    begin
       DoWord(w);
+      w := 0;
+    end;
   end;
 {$else}
   DoByte(codingTable.codingBlocksCount);
