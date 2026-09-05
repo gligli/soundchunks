@@ -7,7 +7,7 @@ unit extern;
 interface
 
 uses
-  logger, Windows, Classes, SysUtils, Types, Process, strutils, math;
+  Windows, Classes, SysUtils, Types, Process, strutils, math;
 
 type
   TDoubleDynArray2 = array of TDoubleDynArray;
