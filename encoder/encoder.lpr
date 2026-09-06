@@ -1501,6 +1501,7 @@ end;
 
 procedure TEncoder.PrepareFrames;
 const
+  CCompressionRatio = 0.54;
   CAttenuationMilliseconds = 2.0;
   CVFRTransitionFreq = 250.0;
 var
@@ -1555,10 +1556,10 @@ begin
 
     indexingCost :=
       (SampleCount * ChannelCount * (
-        Log2(ChunksPerFrame) +
+        Log2(ChunksPerFrame * CCompressionRatio) +
         1 {dstNegative} + 1 {dstReversed} +
         CMaxAttenuationBits / (ChunksPerAttenuation * ChannelCount)
-      )) / (8 {bytes -> bits} * ChunkSize);
+      )) / (8 {bits -> bytes} * ChunkSize);
 
     chunksCost :=
       (ChunksPerFrame * ChunkSize) * ChunkBitDepth * FrameCount / 8;
