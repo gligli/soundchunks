@@ -255,7 +255,7 @@ type
     class function makeOutputSample(ASample: Double; AOutBitDepth, AAttenuation: Byte; ANegative: Boolean): TOutputSample;
     class function makeFloatSample(ASample: SmallInt): Double;
     class function makeFloatSample(ASample: Integer; AOutBitDepth, AAttenuation: Byte; ANegative: Boolean): Double;
-    class function SolveAttenuation(chunkSz: Integer; samples: PDouble): Byte;
+    class function SolveAttenuation(chunkSz: Integer; samples: PSmallInt): Byte;
     class function ComputeAttenuation(Attenuation: Integer): Double;
     class procedure ComputeDCTLut(chunkSz: Integer; lut: PDouble);
     class procedure ComputeInvDCTLut(chunkSz: Integer; lut: PDouble);
@@ -962,29 +962,24 @@ procedure TFrame.ComputeAttenuations;
 var
   iChannel, iChunk, iSample, iAtt, attCnt, pos, loIdx, hiIdx: Integer;
   att: Byte;
-  chunkBuffer: TDoubleDynArray;
-  chunk: TChunk;
+  chunkBuffer: TSmallIntDynArray;
 begin
   SetLength(chunkBuffer, encoder.ChunksPerAttenuation * encoder.ChunkSize * encoder.ChannelCount);
 
   attCnt := (ChunkCount - 1) div encoder.ChunksPerAttenuation + 1;
   for iAtt := 0 to attCnt - 1 do
   begin
-    pos := 0;
     loIdx := iAtt * encoder.ChunksPerAttenuation;
     hiIdx := Min((iAtt + 1) * encoder.ChunksPerAttenuation, ChunkCount) - 1;
 
-    for iChunk := loIdx to hiIdx do
-      for iChannel := 0 to encoder.ChannelCount - 1 do
-      begin
-        chunk := plainChunks[iChunk * encoder.ChannelCount + iChannel];
-
-        for iSample := 0 to encoder.ChunkSize - 1 do
+    pos := 0;
+    for iChannel := 0 to encoder.ChannelCount - 1 do
+      for iSample := loIdx * encoder.ChunkSize to (hiIdx + 1) * encoder.ChunkSize - 1 do
         begin
-          chunkBuffer[pos] := chunk.srcData[iSample];
+          // on unfiltered samples (LMC1992 does bass/treble first then attenuates, so we have to compute attenuations "first" to not saturate in intermediate stage)
+          chunkBuffer[pos] := encoder.srcData[iChannel, StartSample + iSample];
           Inc(pos);
         end;
-      end;
 
     att := TEncoder.SolveAttenuation(pos, @chunkBuffer[0]);
 
@@ -1766,8 +1761,7 @@ function TEncoder.CreateEmphasisFilter: TEmphasisFilter;
 begin
 {$ifdef ATARI_STE}
   Result := TLMC1992Filter.Create(SampleRate);
-  // +4dB bass is the max the STe can take before staturating in a LMC1992 intermediate stage
-  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.NEUTRAL_TONE + 2, TLMC1992Filter.NEUTRAL_TONE - 3);
+  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.NEUTRAL_TONE + 6, TLMC1992Filter.NEUTRAL_TONE - 5);
 {$else}
   Result := TDeltaFilter.Create(SampleRate);
 {$endif}
@@ -1814,14 +1808,14 @@ begin
   Result := EnsureRange(Result, -1.0, 1.0);
 end;
 
-class function TEncoder.SolveAttenuation(chunkSz: Integer; samples: PDouble): Byte;
+class function TEncoder.SolveAttenuation(chunkSz: Integer; samples: PSmallInt): Byte;
 var
   i, hiSmp: Integer;
   coeff: Double;
 begin
   hiSmp := 0;
   for i := 0 to chunkSz - 1 do
-    hiSmp := max(hiSmp, ceil(abs(samples[i] * High(SmallInt))));
+    hiSmp := max(hiSmp, abs(samples[i]));
 
   Result := 0;
   coeff := 1.0;

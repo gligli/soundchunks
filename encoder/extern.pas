@@ -584,7 +584,7 @@ begin
 
     if Compiled then
     begin
-      Process.Executable := 'cluster.exe';
+      Process.Executable := 'spectral_clustering\spectral_clustering.exe';
     end
     else
     begin
