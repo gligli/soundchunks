@@ -1682,22 +1682,36 @@ begin
   writeln('ChunksPerFrame = ', ChunksPerFrame);
 end;
 
+function CompareFrames(Item1,Item2,UserParameter:Pointer):Integer;
+var
+  f1: ^TFrame absolute Item1;
+  f2: ^TFrame absolute Item2;
+begin
+  Result := CompareValue(f2^.SampleCount, f1^.SampleCount);
+  if Result = 0 then
+    Result := CompareValue(f1^.index, f2^.index);
+end;
+
 procedure TEncoder.MakeFrames;
 var
   framesDone: Integer;
+  sortedFrames: array of TFrame;
 
   procedure DoFrame(Index: PtrInt; Data: Pointer);
   begin
     if NoSolveFilterSettings then
-      Frames[Index].MakeFrame
+      sortedFrames[Index].MakeFrame
     else
-      Frames[Index].SolveCompandingFilterSettings;
+      sortedFrames[Index].SolveCompandingFilterSettings;
 
     Write(InterLockedIncrement(framesDone):4, ' / ', FrameCount:4, #13);
   end;
 
 begin
   WriteLn('[MakeFrames]');
+
+  sortedFrames := Copy(Frames);
+  QuickSort(sortedFrames[0], 0, High(sortedFrames), SizeOf(TFrame), @CompareFrames);
 
   framesDone := 0;
   TMTPool.DoStandaloneLocalProc(@DoFrame, 0, FrameCount - 1, Min(NumberOfProcessors, FrameCount));
