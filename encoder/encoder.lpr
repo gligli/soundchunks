@@ -1286,7 +1286,7 @@ begin
     v := 0.0;
 		for iChannel := 0 to encoder.ChannelCount - 1 do
 		  for iSample := 0 to SampleCount - 1 do
-    		v += Abs(ref[iChannel, iSample] - dstData[iChannel, iSample]);
+    		v += Sqr(ref[iChannel, iSample] - dstData[iChannel, iSample]);
 
     if v < best then
     begin
