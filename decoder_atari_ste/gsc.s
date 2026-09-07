@@ -22,7 +22,7 @@ gsc_lmc_sample_skew	EQU	20
 
 ; shouldn't be tweaked
 
-gsc_stream_version	EQU	5
+gsc_stream_version	EQU	7
 gsc_header_size		EQU	80
 
 gsc_audio_buf_size	EQU	gsc_chunks_per_att*gsc_chunk_size

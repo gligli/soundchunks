@@ -230,6 +230,40 @@ finish_ints:
 	rts
 	
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; print_value (d0: word value)
+print_value:
+	movem.l	a0-a1/d0-d3,-(sp)
+	
+	lea	print_data,a1
+	
+	moveq	#4,d3
+	.space_lp:
+		move.b	#' ',(a1)+
+		dbeq.w	d3,.space_lp
+	move.b	#0,(a1)	
+		
+	moveq	#4,d3
+	.decimal_lp:
+		andi.l	#$0000ffff,d0
+		divu.w	#10,d0
+		move.l	d0,d2
+		swap.w	d2
+		add.w	#'0',d2
+		
+		move.b	d2,-(a1)
+
+		tst.w	d0
+		dbeq.w	d3,.decimal_lp
+	
+	move.l	#print_data,-(sp)
+	move.w	#$09,-(sp)
+	bsr.w	trap_gemdos
+	addq.l	#6,sp	
+
+	movem.l	(sp)+,a0-a1/d0-d3
+	rts
+
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; print_text (a0: string) 
 print_text:
 	movem.l	a0/d0,-(sp)
@@ -534,7 +568,9 @@ main:
 	move.l	gsc_file_size.l,d0
 	bsr.w	gsc_init
 	tst.l	d0
-	bne.s	.fail
+	bne.w	.fail
+
+	; show some nice infos
 
 	move.l	a0,a1
 
@@ -549,6 +585,27 @@ main:
 	
 	lea.l	48(a1),a0
 	bsr.w	print_text
+
+	lea	(gsc_length_message),a0
+	bsr.w	print_text
+	
+	move.l	12(a1),d0
+	add.l	#500,d0
+	divu.w	#1000,d0
+	move.w	d0,d1
+	bsr.w	print_value	
+
+	lea	(gsc_bitrate_message),a0
+	bsr.w	print_text
+	
+	move.l	gsc_file_size.l,d0
+	lsr.l	#7,d0
+	moveq	#0,d2
+	move.w	d1,d2
+	lsr.w	#1,d2
+	add.l	d2,d0
+	divu.w	d1,d0
+	bsr.w	print_value	
 
 	lea	(gsc_play_message),a0
 	bsr.w	print_text
@@ -624,9 +681,6 @@ gsc_welcome_message:
 gsc_track_message:
 	dc.b	"Please input GSC file name: (Esc,Return: Quit)",13,10,0
 
-gsc_play_message:
-	dc.b	13,10,"Playing (Esc: Stop, -/+: Volume)...",13,10,0
-
 file_read_message:
 	dc.b	13,10,"Reading file...",13,10,0	
 
@@ -640,5 +694,11 @@ gsc_artist_message:
 	dc.b	"Artist: ",0	
 gsc_title_message:
 	dc.b	13,10,"Title:  ",0	
+gsc_length_message:
+	dc.b	13,10,"Length: ",0	
+gsc_bitrate_message:
+	dc.b	" seconds",13,10,"Rate:   ",0	
+gsc_play_message:
+	dc.b	" Kb/sec",13,10,"Playing (Esc: Stop, -/+: Volume)...",13,10,0
 
 	even
