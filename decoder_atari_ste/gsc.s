@@ -7,7 +7,7 @@
 
 ; tweakable
 
-gsc_volume_compensation	EQU	0	; eg. 6 = 12dB
+gsc_volume_compensation	EQU	2	; eg. 2 = -4dB
 
 gsc_chunk_size		EQU	6
 gsc_chunks_per_att	EQU	36

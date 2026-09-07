@@ -1,7 +1,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  VARIABLES  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 lo_var_base	EQU	$800
-vbl_idx		EQU	lo_var_base-4
+trap_storage	EQU	lo_var_base-24
+vbl_idx		EQU	trap_storage-4
 vbl_done	EQU	vbl_idx-4
 gsc_file_size	EQU	vbl_done-4
 gsc_file_ptr	EQU	gsc_file_size-4
@@ -127,6 +128,26 @@ dummy_vector:
 	SECTION TEXT
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; trap_gemdos
+trap_gemdos:
+	movem.l	a0-a2/d1-d2,trap_storage+4.w	; store regs that can be overwritten by trap
+	move.l	(sp)+,trap_storage.w		; store return address (also makes stack ready for trap)
+	trap	#1
+	move.l	trap_storage.w,-(sp)
+	movem.l	trap_storage+4.w,a0-a2/d1-d2
+	rts		
+
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; trap_xbios
+trap_xbios:
+	movem.l	a0-a2/d1-d2,trap_storage+4.w	; store regs that can be overwritten by trap
+	move.l	(sp)+,trap_storage.w		; store return address (also makes stack ready for trap)
+	trap	#14
+	move.l	trap_storage.w,-(sp)
+	movem.l	trap_storage+4.w,a0-a2/d1-d2
+	rts		
+
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; debug_call
 debug_call:
 	set_screen_addr _v_bas_ad.w
@@ -167,7 +188,7 @@ print_text:
 
 	move.l	a0,-(sp)
 	move.w	#$09,-(sp)
-	trap	#1
+	bsr.w	trap_gemdos
 	addq.l	#6,sp	
 
 	movem.l	(sp)+,a0/d0
@@ -176,22 +197,22 @@ print_text:
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; read_text (returns: a0: string)
 read_text:
-	movem.l	d0,-(sp)
+	move.l	d0,-(sp)
 
 	lea	(print_data),a0
 	move.w	#$4000,(a0)
 
 	move.l	a0,-(sp)
 	move.w	#$0a,-(sp)
-	trap	#1
+	bsr.w	trap_gemdos
 	addq.l	#6,sp	
 	
 	moveq	#0,d0
 	move.b	1(a0),d0
 	addq.l	#2,a0
 	clr.b	0(a0,d0.w)
-
-	movem.l	(sp)+,d0
+	
+	move.l	(sp)+,d0
 	rts
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -203,7 +224,7 @@ alloc_read_file_beginning:
 	move.w	0,-(sp)		; read only
 	move.l	a0,-(sp)
 	move.w	#$3d,-(sp)
-	trap	#1
+	bsr.w	trap_gemdos
 	addq.l	#8,sp
 	tst.l	d0
 	bpl.s	.file_found
@@ -227,7 +248,7 @@ alloc_read_file_beginning:
 	move.w	0,-(sp)		; read only
 	move.l	a0,-(sp)
 	move.w	#$3d,-(sp)
-	trap	#1
+	bsr.w	trap_gemdos
 	addq.l	#8,sp
 	tst.l	d0
 	bmi.w	.error_no_open
@@ -240,7 +261,7 @@ alloc_read_file_beginning:
 	move.w	d7,-(sp)
 	move.l	#0,-(sp)
 	move.w	#$42,-(sp)
-	trap	#1
+	bsr.w	trap_gemdos
 	adda.l	#10,sp
 	tst.l	d0
 	bmi.s	.error	
@@ -252,7 +273,7 @@ alloc_read_file_beginning:
 	move.w	d7,-(sp)
 	move.l	#0,-(sp)
 	move.w	#$42,-(sp)
-	trap	#1
+	bsr.w	trap_gemdos
 	adda.l	#10,sp
 	tst.l	d0
 	bmi.s	.error	
@@ -260,7 +281,7 @@ alloc_read_file_beginning:
 	; malloc
 	move.l	d6,-(sp)
 	move.w	#$48,-(sp)
-	trap	#1
+	bsr.w	trap_gemdos
 	addq.l	#6,sp
 	tst.l	d0
 	bmi.s	.error	
@@ -275,7 +296,7 @@ alloc_read_file_beginning:
 	move.l	#$2000,-(sp)
 	move.w	d7,-(sp)
 	move.w	#$3f,-(sp)
-	trap	#1
+	bsr.w	trap_gemdos
 	adda.l	#12,sp
 	tst.l	d0
 	bmi.s	.error
@@ -315,7 +336,7 @@ continue_read_file:
 	move.l	#$2000,-(sp)
 	move.w	d7,-(sp)
 	move.w	#$3f,-(sp)
-	trap	#1
+	bsr.w	trap_gemdos
 	adda.l	#12,sp
 	tst.l	d0
 	bmi.s	.error
@@ -339,7 +360,7 @@ close_file:
 	; close
 	move.w	d7,-(sp)
 	move.w	#$3e,-(sp)
-	trap	#1
+	bsr.w	trap_gemdos
 	addq.l	#4,sp
 
 	move.l	(sp)+,d0
@@ -442,7 +463,7 @@ main:
 	move.l	#-1,-(sp)
 	move.l	#-1,-(sp)
 	move.w	#5,-(sp)
-	trap	#14
+	bsr.w	trap_xbios
 	adda.l	#12,sp
 		
 	; clear screen
@@ -496,9 +517,6 @@ main_loop:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  BSS  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	SECTION	BSS
-
-mpb:
-	ds.b	12
 
 system_stack:
 	ds.b	4096			; stack space
