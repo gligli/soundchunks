@@ -1481,10 +1481,7 @@ begin
   AStream.WriteByte(ChunksPerAttenuation);
   AStream.WriteWord(NtoBE(Word(SampleRate)));
   AStream.WriteWord(NtoBE(Word(ChunksPerFrame - 1)));
-
-  // dummy stuff to fill 16 bytes :o)
-  AStream.WriteWord(NtoBE(Word($611)));
-  AStream.WriteWord(NtoBE(Word($611)));
+  AStream.WriteDWord(NtoBE(Cardinal((SampleCount * 1000) div SampleRate)));
 
   Assert(AStream.Position = 16);
 
