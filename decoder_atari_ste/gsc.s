@@ -7,7 +7,7 @@
 
 ; tweakable
 
-gsc_volume_compensation	EQU	2	; eg. 2 = -4dB
+gsc_default_volume	EQU	40-2	; -2 = -4dB
 
 gsc_chunk_size		EQU	6
 gsc_chunks_per_att	EQU	36
@@ -22,6 +22,7 @@ gsc_lmc_sample_skew	EQU	20
 
 ; shouldn't be tweaked
 
+gsc_stream_version	EQU	5
 gsc_header_size		EQU	80
 
 gsc_audio_buf_size	EQU	gsc_chunks_per_att*gsc_chunk_size
@@ -34,7 +35,10 @@ gsc_timer_skewed_data	EQU	gsc_timer_data-gsc_timer_skew
 gsc_timer_a_int_save	EQU	lo_var_main_end-4
 gsc_start_ptr		EQU	gsc_timer_a_int_save-4
 gsc_end_ptr		EQU	gsc_start_ptr-4
-gsc_cur_chunks_ptr	EQU	gsc_end_ptr-4
+gsc_volume		EQU	gsc_end_ptr-2
+gsc_channel_count	EQU	gsc_volume-2
+gsc_frame_chunks_size	EQU	gsc_channel_count-4
+gsc_cur_chunks_ptr	EQU	gsc_frame_chunks_size-4
 gsc_cur_indexes_ptr	EQU	gsc_cur_chunks_ptr-4
 gsc_cur_indexes_left	EQU	gsc_cur_indexes_ptr-2
 gsc_dmasnd_phase	EQU	gsc_cur_indexes_left-2
@@ -162,7 +166,8 @@ gsc_timer_a_update_int:
 	moveq	#0,d0
 	get_bits d0,4
 	neg.w	d0
-	add.w	#%10011000000+40-gsc_volume_compensation,d0
+	add.w	#%10011000000,d0
+	add.w	gsc_volume.w,d0
 	move.w	d0,gsc_lmc_next_att.w
 	
 	; decode mirrors & chunk index & upload chunk data to dmasnd buffer
@@ -372,15 +377,32 @@ gsc_next_frame:
 	rts
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; gsc_init (a0: pointer on GSC data, d0: GSC data size)
+	; gsc_init (a0: pointer on GSC data, d0: GSC data size; retusns: d0: 0 on success)
 gsc_init:
-	movem.l	a0/a1/d0,-(sp)
+	movem.l	a0/a1/d1,-(sp)
 
 	; initial state
 	move.w	#gsc_audio_buf_size,gsc_dmasnd_phase.w
+	move.w	#gsc_default_volume,gsc_volume.w
 	move.w	#0,gsc_coding_blocks_dummy.w
 
 	; prepare decoding
+
+	cmpi.l	#$47534361,(a0)			; 'GSCa' header
+	bne.w	.fail
+	
+	cmpi.b	#gsc_stream_version,4(a0)	; 'CStreamVersion'
+	bne.w	.fail						
+	
+	cmpi.b	#gsc_chunk_size,6(a0)		; 'ChunkSize'
+	bne.w	.fail						
+
+	move.b	5(a0),gsc_channel_count.w	; 'ChannelCount'
+
+	move.w	10(a0),d1			; 'ChunksPerFrame - 1'
+	addq.w	#1,d1
+	mulu.w	#gsc_chunk_size,d1
+	move.l	d1,gsc_frame_chunks_size
 	
 	lea	gsc_header_size(a0),a1
 	sub.l	#gsc_header_size,d0
@@ -396,13 +418,14 @@ gsc_init:
 	move.w	#$7ff,$ffff8924.w
 
 	; init LMC1992 thru Microwire
-	move.w	#%10011000000+40-gsc_volume_compensation,d0	; master volume
+	move.w	#%10011000000,d0		; master volume
+	add.w	gsc_volume.w,d0
 	bsr.w	gsc_microwire_write_wait
-	move.w	#%10010000000+0,d0				; treble
+	move.w	#%10010000000+0,d0		; treble
 	bsr.w	gsc_microwire_write_wait
-	move.w	#%10001000000+12,d0				; bass
+	move.w	#%10001000000+12,d0		; bass
 	bsr.w	gsc_microwire_write_wait
-	move.w	#%10000000010,d0 				; mixer
+	move.w	#%10000000010,d0 		; mixer
 	bsr.w	gsc_microwire_write_wait
 
 	; 25033Hz Mono Looping DMA Sound System
@@ -441,8 +464,17 @@ gsc_init:
 	; start Timer A
 	bclr.b	#4,$fffffa19.w
 
-	movem.l	(sp)+,a0/a1/d0
+	; success!
+	moveq.l	#0,d0
+
+.end:
+	movem.l	(sp)+,a0/a1/d1
 	rts
+
+.fail:
+	; failure...
+	moveq.l	#-1,d0
+	bra.s	.end
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_finish
@@ -466,6 +498,26 @@ gsc_finish:
 
 	; restore ST-MFP-13 Vector (Timer A)
 	move.l	gsc_timer_a_int_save.w,$134.w
+	
+	rts
+
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; gsc_set_volume (d0: 0-40 volume; returns: d0: valid volume)
+gsc_set_volume:
+	cmp.w	#40,d0
+	blo.s	.valid_volume
+.invalid_volume:
+		move.w	#40,d0
+.valid_volume:
+
+	move.w	d0,gsc_volume.w
+
+	rts
+
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; gsc_get_volume (returns d0: 0-40 volume)
+gsc_get_volume:
+	move.w	gsc_volume.w,d0
 	
 	rts
 

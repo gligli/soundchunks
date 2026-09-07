@@ -1,7 +1,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  VARIABLES  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 lo_var_base	EQU	$800
-trap_storage	EQU	lo_var_base-24
+palette_save	EQU	lo_var_base-6
+mfp_int_save	EQU	palette_save-8
+vbl_int_save	EQU	mfp_int_save-4
+trap_storage	EQU	vbl_int_save-24
 vbl_idx		EQU	trap_storage-4
 vbl_done	EQU	vbl_idx-4
 gsc_file_size	EQU	vbl_done-4
@@ -182,18 +185,63 @@ clear_screen_lp:
 	rts
 	
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; print_text (a0: string)
+	; init_ints
+init_ints:
+	move.l	a0,-(sp)
+
+	; disable irqs
+	move    #$2700,SR
+
+	; init vbl counter
+	clr.l	vbl_idx.w
+
+	; set Level 6 Int Autovector (MFP)
+	move.l	$78.w,mfp_int_save.w
+	lea	(dummy_vector),a0
+	move.l	a0,$78.w
+	
+	; set Level 4 Int Autovector (VBL)
+	move.l	$70.w,vbl_int_save.w
+	lea	(vbl),a0
+	move.l	a0,$70.w
+
+	; enable irqs
+	move    #$2300,SR
+
+	move.l	(sp)+,a0
+	rts
+	
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; finish_ints
+finish_ints:
+
+	; disable irqs
+	move    #$2700,SR
+
+	; reset Level 4 Int Autovector (VBL)
+	move.l	vbl_int_save.w,$70.w
+
+	; reset Level 6 Int Autovector (MFP)
+	move.l	mfp_int_save.w,$78.w
+	
+	; enable irqs
+	move    #$2300,SR
+	
+	rts
+	
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; print_text (a0: string) 
 print_text:
 	movem.l	a0/d0,-(sp)
 
 	move.l	a0,-(sp)
 	move.w	#$09,-(sp)
 	bsr.w	trap_gemdos
-	addq.l	#6,sp	
+	addq.l	#6,sp
 
 	movem.l	(sp)+,a0/d0
 	rts
-	
+
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; read_text (returns: a0: string)
 read_text:
@@ -211,7 +259,7 @@ read_text:
 	move.b	1(a0),d0
 	addq.l	#2,a0
 	clr.b	0(a0,d0.w)
-	
+
 	move.l	(sp)+,d0
 	rts
 
@@ -262,7 +310,7 @@ alloc_read_file_beginning:
 	move.l	#0,-(sp)
 	move.w	#$42,-(sp)
 	bsr.w	trap_gemdos
-	adda.l	#10,sp
+	lea	10(sp),sp
 	tst.l	d0
 	bmi.s	.error	
 
@@ -274,7 +322,7 @@ alloc_read_file_beginning:
 	move.l	#0,-(sp)
 	move.w	#$42,-(sp)
 	bsr.w	trap_gemdos
-	adda.l	#10,sp
+	lea	10(sp),sp
 	tst.l	d0
 	bmi.s	.error	
 	
@@ -297,7 +345,7 @@ alloc_read_file_beginning:
 	move.w	d7,-(sp)
 	move.w	#$3f,-(sp)
 	bsr.w	trap_gemdos
-	adda.l	#12,sp
+	lea	12(sp),sp
 	tst.l	d0
 	bmi.s	.error
 	
@@ -337,7 +385,7 @@ continue_read_file:
 	move.w	d7,-(sp)
 	move.w	#$3f,-(sp)
 	bsr.w	trap_gemdos
-	adda.l	#12,sp
+	lea	12(sp),sp
 	tst.l	d0
 	bmi.s	.error
 	
@@ -371,6 +419,11 @@ close_file:
 gsc_show_welcome_message:
 	move.l	a0,-(sp)
 
+	; save palette
+	move.w  $ffff8240.w,palette_save+0.w
+	move.w  $ffff8246.w,palette_save+2.w
+	move.w  $ffff825e.w,palette_save+4.w
+
 	; white on blue
 	move.w  #$0812,$ffff8240.w
 	move.w  #$03cd,$ffff8246.w
@@ -392,6 +445,8 @@ gsc_load_track:
 		bsr.w	print_text
 		
 		bsr.w	read_text
+		cmpi.b	#$1b,(a0)
+		beq.s	.quit		
 		bsr.w	alloc_read_file_beginning
 		tst.l	d0
 		beq.s	.load_valid_track_lp
@@ -401,25 +456,19 @@ gsc_load_track:
 	move.l	d0,gsc_file_size.w
 	move.l	d7,gsc_file_handle.w
 
-	move.l	a0,a1
-
-	lea	(gsc_artist_message),a0
-	bsr.w	print_text
-
-	lea.l	16(a1),a0
-	bsr.w	print_text
-
-	lea 	(gsc_title_message),a0
-	bsr.w	print_text
-	
-	lea.l	48(a1),a0
-	bsr.w	print_text
-
-	lea	(gsc_play_message),a0
-	bsr.w	print_text
-	
 	movem.l	(sp)+,a0/a1/d0/d7
 	rts	
+	
+.quit:
+	; restore palette
+	move.w	palette_save+0.w,$ffff8240.w
+	move.w	palette_save+2.w,$ffff8246.w
+	move.w	palette_save+4.w,$ffff825e.w
+
+	; terminate program
+	move.w	#0,-(sp)
+	move.l	#$4c,-(sp)
+	bsr.w	trap_gemdos
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_continue_load_track
@@ -464,7 +513,7 @@ main:
 	move.l	#-1,-(sp)
 	move.w	#5,-(sp)
 	bsr.w	trap_xbios
-	adda.l	#12,sp
+	lea	12(sp),sp
 		
 	; clear screen
 	bsr.w	clear_screen
@@ -472,48 +521,89 @@ main:
 	; welcome message
 	bsr.w	gsc_show_welcome_message
 
+.retry:
+
 	; load ROM
 	bsr.w	gsc_load_track	
 
-	; disable irqs
-	move    #$2700,SR
-
-	; no MFP TimerA & TimerB interrupts
-	clr.b 	$fffffa07.w
-	clr.b 	$fffffa09.w  
-
-	; init vbl counter
-	clr.l	vbl_idx.w
-
-	; set Level 6 Int Autovector (MFP)
-	lea	(dummy_vector),a0
-	move.l	a0,$78.w
-	
-	; set Level 4 Int Autovector (VBL)
-	lea	(vbl),a0
-	move.l	a0,$70.w
-
-	; enable irqs
-	move    #$2300,SR
+	; init interrupts
+	bsr.w	init_ints
 	
 	; init SoundChunks replayer
 	move.l	gsc_file_ptr.l,a0
 	move.l	gsc_file_size.l,d0
 	bsr.w	gsc_init
+	tst.l	d0
+	bne.s	.fail
 
+	move.l	a0,a1
+
+	lea	(gsc_artist_message),a0
+	bsr.w	print_text
+
+	lea.l	16(a1),a0
+	bsr.w	print_text
+
+	lea 	(gsc_title_message),a0
+	bsr.w	print_text
+	
+	lea.l	48(a1),a0
+	bsr.w	print_text
+
+	lea	(gsc_play_message),a0
+	bsr.w	print_text
+	
 	; main loop
-main_loop:
+.main_loop:
 
 	; continue loading GSC
 	bsr.w	gsc_continue_load_track
 	
-	bra.w	main_loop	
+	; read keyboard
+	move.w	#$ff,-(sp)
+	move.w	#6,-(sp)
+	bsr.w	trap_gemdos
+	addq.l	#4,sp
 
+	; if esc is pressed, stop playing
+	cmpi.b	#$1b,d0
+	beq.w	.finish
+
+	cmpi.b	#'+',d0
+	bne.s	.no_up_volume
+.up_volume:
+		bsr.w	gsc_get_volume
+		addq.w	#1,d0
+		bsr.w	gsc_set_volume
+		bra.s	.volume_end
+.no_up_volume:
+
+	cmpi.b	#'-',d0
+	bne.s	.no_lo_volume
+.lo_volume:
+		bsr.w	gsc_get_volume
+		subq.w	#1,d0
+		bsr.w	gsc_set_volume
+.no_lo_volume:
+
+.volume_end:
+
+	bra.s	.main_loop
+	
+.finish:
 	; finish
 	bsr.w	gsc_finish
 	bsr.w	gsc_close_track
 
-.halt   bra.s   .halt
+	; reset interrupts
+	bsr.w	finish_ints
+	
+	bra.w	.retry
+
+.fail:
+	lea	(file_not_a_gsc_message),a0
+	bsr.w	print_text
+	bra.s	.finish
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  BSS  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	SECTION	BSS
@@ -532,16 +622,19 @@ gsc_welcome_message:
 	dc.b	13,10,"STeGSC, Atari STe SoundChunks replayer",13,10,"By GliGli, version 0.01b",13,10,13,10,0
 
 gsc_track_message:
-	dc.b	"Please input GSC file name:",13,10,0
+	dc.b	"Please input GSC file name: (Esc,Return: Quit)",13,10,0
 
 gsc_play_message:
-	dc.b	13,10,"Playing...",13,10,0
+	dc.b	13,10,"Playing (Esc: Stop, -/+: Volume)...",13,10,0
 
 file_read_message:
 	dc.b	13,10,"Reading file...",13,10,0	
 
 file_error_message:
 	dc.b	13,10,"Error reading file!",13,10,0	
+
+file_not_a_gsc_message:
+	dc.b	13,10,"File is not a valid SoundChunks stream! (bad stream version?)",13,10,13,10,0	
 
 gsc_artist_message:
 	dc.b	"Artist: ",0	
