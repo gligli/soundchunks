@@ -7,7 +7,7 @@
 
 ; tweakable
 
-gsc_default_volume	EQU	40-2	; -2 = -4dB
+gsc_default_volume	EQU	40-3	; -3 = -6dB
 
 gsc_chunk_size		EQU	6
 gsc_chunks_per_att	EQU	36
@@ -564,11 +564,17 @@ gsc_finish:
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_set_volume (d0: 0-40 volume; returns: d0: valid volume)
 gsc_set_volume:
+	tst.w	d0
+	bpl.s	.no_too_lo_volume
+.too_lo_volume:
+		clr.w	d0
+.no_too_lo_volume:
+
 	cmp.w	#40,d0
-	blo.s	.valid_volume
-.invalid_volume:
+	blo.s	.no_too_hi_volume
+.too_hi_volume:
 		move.w	#40,d0
-.valid_volume:
+.no_too_hi_volume:
 
 	move.w	d0,gsc_volume.w
 
