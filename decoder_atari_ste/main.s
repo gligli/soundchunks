@@ -564,6 +564,8 @@ gsc_continue_load_track:
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_close_track
 gsc_close_track:
+	movem.l	a0/d7,-(sp)
+
 	move.l	gsc_file_handle.w,d7
 	beq.s	.no_close_file
 	
@@ -577,8 +579,23 @@ gsc_close_track:
 	
 	.no_close_file:
 	
+	movem.l	(sp)+,a0/d7
 	rts
 	
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; gsc_free_track
+gsc_free_track:
+	move.l	d0,-(sp)
+	
+	; mfree
+	move.l	gsc_file_ptr.w,-(sp)
+	move.w	#$49,-(sp)
+	bsr.w	trap_gemdos
+	addq.l	#6,sp
+
+	movem.l	(sp)+,d0
+	rts
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  MAIN  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 main:
@@ -712,6 +729,7 @@ main:
 	; finish
 	bsr.w	gsc_finish
 	bsr.w	gsc_close_track
+	bsr.w	gsc_free_track
 
 	; reset interrupts
 	bsr.w	finish_ints
