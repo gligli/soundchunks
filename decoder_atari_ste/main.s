@@ -1,7 +1,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  VARIABLES  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 lo_var_base	EQU	$800
-palette_save	EQU	lo_var_base-6
+screen_res_save	EQU	lo_var_base-2
+palette_save	EQU	screen_res_save-6
 mfp_int_save	EQU	palette_save-8
 vbl_int_save	EQU	mfp_int_save-4
 trap_storage	EQU	vbl_int_save-24
@@ -507,6 +508,14 @@ gsc_load_track:
 	rts	
 	
 .quit:
+	; restore resolution
+	move.w	screen_res_save.w,-(sp)
+	move.l	#-1,-(sp)
+	move.l	#-1,-(sp)
+	move.w	#5,-(sp)
+	bsr.w	trap_xbios
+	lea	12(sp),sp
+
 	; restore mouse
 	pea	(ikbd_enable_mouse)
 	move.w	#0,-(sp)
@@ -579,6 +588,13 @@ main:
 	move.w	#25,-(sp)
 	bsr.w	trap_xbios
 	addq.l	#8,sp
+
+	; get resolution
+	move.w	#4,-(sp)
+	bsr.w	trap_xbios
+	addq.l	#2,sp
+
+	move.w	d0,screen_res_save.w
 
 	; setup resolution (med res)
 	move.w	#1,-(sp)
