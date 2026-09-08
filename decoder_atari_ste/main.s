@@ -494,6 +494,13 @@ gsc_load_track:
 	rts	
 	
 .quit:
+	; restore mouse
+	pea	(ikbd_enable_mouse)
+	move.w	#0,-(sp)
+	move.w	#25,-(sp)
+	bsr.w	trap_xbios
+	addq.l	#8,sp
+
 	; restore palette
 	move.w	palette_save+0.w,$ffff8240.w
 	move.w	palette_save+2.w,$ffff8246.w
@@ -541,6 +548,13 @@ gsc_close_track:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  MAIN  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 main:
+	; disable mouse
+	pea	(ikbd_disable_mouse)
+	move.w	#0,-(sp)
+	move.w	#25,-(sp)
+	bsr.w	trap_xbios
+	addq.l	#8,sp
+
 	; setup resolution (med res)
 	move.w	#1,-(sp)
 	move.l	#-1,-(sp)
@@ -674,6 +688,12 @@ print_data:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  DATA  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	SECTION DATA
+
+ikbd_disable_mouse:
+	dc.b	$12,$00
+
+ikbd_enable_mouse:
+	dc.b	$08,$00
 
 gsc_welcome_message:
 	dc.b	13,10,"STeGSC, Atari STe SoundChunks replayer",13,10,"By GliGli, version 0.01b",13,10,13,10,0
