@@ -425,7 +425,7 @@ continue_read_file:
 
 	; read
 	move.l	a1,-(sp)
-	move.l	#$2000,-(sp)
+	move.l	#$800,-(sp)
 	move.w	d7,-(sp)
 	move.w	#$3f,-(sp)
 	bsr.w	trap_gemdos
@@ -652,6 +652,7 @@ main:
 	; continue loading GSC
 	bsr.w	gsc_continue_load_track
 	
+.test_key_pressed:
 	; a key was pressed?
 	move.w	#2,-(sp)
 	move.w	#1,-(sp)
@@ -677,16 +678,16 @@ main:
 		bsr.w	gsc_get_volume
 		addq.w	#1,d0
 		bsr.w	gsc_set_volume
-		bra.s	.main_loop
+		bra.s	.test_key_pressed
 .no_up_volume:
 
 	cmpi.b	#'-',d0
-	bne.s	.main_loop
-.lo_volume:
+	bne.s	.test_key_pressed
+.dn_volume:
 		bsr.w	gsc_get_volume
 		subq.w	#1,d0
 		bsr.w	gsc_set_volume
-		bra.s	.main_loop
+		bra.s	.test_key_pressed
 	
 .finish:
 	; finish
