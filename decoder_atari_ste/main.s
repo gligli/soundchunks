@@ -489,8 +489,11 @@ gsc_load_track:
 		bsr.w	print_text
 		
 		bsr.w	read_text
-		cmpi.b	#$1b,(a0)
-		beq.s	.quit		
+		tst.b	(a0)		; empty string?
+		beq.s	.load_valid_track_lp	
+		cmpi.b	#$1b,(a0)	; esc key?
+		beq.s	.quit	
+		
 		bsr.w	alloc_read_file_beginning
 		tst.l	d0
 		beq.s	.load_valid_track_lp
