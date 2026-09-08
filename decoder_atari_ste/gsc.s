@@ -437,6 +437,13 @@ gsc_init:
 	move.w	#gsc_audio_buf_size,gsc_dmasnd_phase.w
 	move.w	#gsc_default_volume,gsc_volume.w
 	
+	; clear audio buffer
+	lea	(gsc_audio_buf),a1
+	moveq	#gsc_audio_dblbuf_size/4-1,d1
+	.clr_cmls_lp:
+		clr.l	(a1)+
+		dbra.w	d1,.clr_cmls_lp
+
 	; prepare decoding
 
 	cmpi.l	#$47534361,(a0)			; 'GSCa' header
