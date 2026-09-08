@@ -556,15 +556,25 @@ gsc_continue_load_track:
 		rts
 
 	.finished_loading:
-		bsr.w	gsc_close_track
-	
+		tst.l	gsc_file_handle.w
+		beq.s	.no_close_file
+		
+		.close_file:
+		
+			bsr.w	gsc_close_track
+
+			lea	(file_loading_done_message),a0
+			bsr.w	print_text
+		
+		.no_close_file:
+
 		movem.l	(sp)+,a0/a1/d0/d7
 		rts
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_close_track
 gsc_close_track:
-	movem.l	a0/d7,-(sp)
+	move.l	d7,-(sp)
 
 	move.l	gsc_file_handle.w,d7
 	beq.s	.no_close_file
@@ -573,13 +583,10 @@ gsc_close_track:
 	
 		bsr.w	close_file
 		clr.l	gsc_file_handle.w
-
-		lea	(file_loading_done_message),a0
-		bsr.w	print_text
 	
 	.no_close_file:
 	
-	movem.l	(sp)+,a0/d7
+	move.l	(sp)+,d7
 	rts
 	
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
