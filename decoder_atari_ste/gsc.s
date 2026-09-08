@@ -38,17 +38,17 @@ gsc_end_ptr		EQU	gsc_start_ptr-4
 gsc_volume		EQU	gsc_end_ptr-2
 gsc_channel_count	EQU	gsc_volume-2
 gsc_frame_chunks_size	EQU	gsc_channel_count-4
-gsc_cur_chunks_ptr	EQU	gsc_frame_chunks_size-4
+gsc_coding_block_m2	EQU	gsc_frame_chunks_size-2
+gsc_cur_chunks_ptr	EQU	gsc_coding_block_m2-4
 gsc_cur_indexes_ptr	EQU	gsc_cur_chunks_ptr-4
-gsc_cur_indexes_left	EQU	gsc_cur_indexes_ptr-2
-gsc_dmasnd_phase	EQU	gsc_cur_indexes_left-2
+gsc_cur_att_left	EQU	gsc_cur_indexes_ptr-2
+gsc_dmasnd_phase	EQU	gsc_cur_att_left-2
 gsc_lmc_next_att	EQU	gsc_dmasnd_phase-2
 gsc_bits_val		EQU	gsc_lmc_next_att-2
 gsc_bits_cnt		EQU	gsc_bits_val-2
-gsc_coding_blocks_bits	EQU	gsc_bits_cnt-2
-gsc_coding_blocks_val	EQU	gsc_coding_blocks_bits-2
-gsc_coding_blocks_dummy	EQU	gsc_coding_blocks_val-2
-lo_var_gsc_end		EQU	gsc_coding_blocks_dummy
+gsc_coding_blocks_bits	EQU	gsc_bits_cnt-32
+gsc_coding_blocks_cmls	EQU	gsc_coding_blocks_bits-32
+lo_var_gsc_end		EQU	gsc_coding_blocks_cmls
 			
 lo_buf_gsc_end		EQU	lo_buf_main_end
 
@@ -82,19 +82,22 @@ gsc_timer_a_init_int:
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_timer_a_update_int: everything happens here (decoding SoundChunks)
 	
-	macro	get_bit	; \1: dest reg
+	macro	get_bit	; \1: dest reg, \2: carry output only?
 			subq.b	#1,d6
 			bpl.s	.no_underflow\@
 				move.w	(a2)+,d5
 				moveq	#16-1,d6
 		.no_underflow\@:
 			add.w	d5,d5
-			addx.w	\1,\1
+			
+			ifeq	\2
+				addx.w	\1,\1
+			endif			
 	endm
 
 	macro	get_bits	; \1: dest reg, \2: bit count
 		rept \2
-			get_bit \1
+			get_bit \1,0
 		endr
 	endm
 	
@@ -145,7 +148,7 @@ gsc_timer_a_update_int:
 	lea	(gsc_audio_buf),a1
 	adda.w	d0,a1
 
-	cmpi.w	#-1,gsc_cur_indexes_left.w
+	tst.w	gsc_cur_att_left.w
 	bne.s	.begin_decode
 
 .next_frame:
@@ -157,7 +160,7 @@ gsc_timer_a_update_int:
 	
 	; restore decoding state
 	move.l	gsc_cur_indexes_ptr.w,a2
-	lea	gsc_coding_blocks_val.w,a3
+	lea	gsc_coding_blocks_bits.w,a3
 	move.l	gsc_cur_chunks_ptr.w,a4
 	move.w	gsc_bits_val.w,d5
 	move.w	gsc_bits_cnt.w,d6
@@ -175,21 +178,47 @@ gsc_timer_a_update_int:
 	.chunk_per_att_lp:
 
 		; decode mirrors
+		
+			; negative?
 		moveq	#0,d0
-		get_bit d0	; negative?
+		get_bit d0,0	
+			
+			; reversed?
 		moveq	#0,d4
-		get_bit d4	; reversed?
+		get_bit d4,0	
 		
 		; decode chunk index
-		moveq	#0,d2
-		get_bit d2
-		moveq	#0,d3
-		move.b	2(a3,d2.w),d3
+		
+			; decode coding block index
+		move.w	gsc_coding_block_m2.w,d2
+		bmi.s	.no_coding_bits
+
+		.has_coding_bits:
+		
+			.coding_bits_lp:
+				get_bit	carry,1
+				dbcc.w	d2,.coding_bits_lp
+		
+			add.w	d2,d2
+			
+		.no_coding_bits:
+		
+			; decode actual chunk index
 		moveq	#0,d1
-		.idx_bit_lp:
-			get_bit	d1
-			dbra.w	d3,.idx_bit_lp
-		add.b	-1(a3,d2.w),d1
+		move.w	0(a3,d2.w),d3
+		bmi.s	.no_index_bits
+		
+		.has_index_bits:
+		
+			.index_bits_lp:
+				get_bit	d1,0
+				dbra.w	d3,.index_bits_lp
+		
+		.no_index_bits:
+		
+		add.w	-32(a3,d2.w),d1
+
+		; convert to chunk ptr
 
 		ifeq	gsc_chunk_size-6
 			add.w	d1,d1
@@ -204,6 +233,7 @@ gsc_timer_a_update_int:
 		adda.l	d1,a0
 
 		; upload chunk data to dmasnd buffer
+		
 		tst.b	d0
 		bne.s	.negative_any_chunk
 
@@ -252,8 +282,8 @@ gsc_timer_a_update_int:
 				
 	.chunk_per_att_end:	
 
-	; we uploaded gsc_chunks_per_att to dmasnd
-	subi.w	#gsc_chunks_per_att,gsc_cur_indexes_left.w
+	; we uploaded one attenuation to dmasnd
+	subq.w	#1,gsc_cur_att_left.w
 
 	; save decoding state
 	move.l	a2,gsc_cur_indexes_ptr.w
@@ -303,7 +333,7 @@ gsc_microwire_write_wait:
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_next_frame: handle changing frame (a0: pointer on frame start)
 gsc_next_frame:
-	movem.l	a0/d0/d1/d2,-(sp)
+	movem.l	a0/a1/d0/d1/d2/d3/d4,-(sp)
 	
 	; test	end-of-data and loop
 	cmpa.l	gsc_end_ptr.w,a0
@@ -312,12 +342,11 @@ gsc_next_frame:
 		move.l	gsc_start_ptr.w,a0
 	.no_eof:
 	
-	; read chunk count
-	moveq	#0,d2
-	move.b	(a0)+,d2
-	addq.w	#1,d2
-	mulu.w	#gsc_chunk_size,d2
-		
+	; read attenuation count
+	move.w	(a0)+,d0
+	addq.w	#1,d0
+	move.w	d0,gsc_cur_att_left.w
+	
 	; read bass/treble
 	moveq	#0,d1
 	move.b	(a0)+,d1
@@ -334,46 +363,69 @@ gsc_next_frame:
 	ori.w	#%10001000000,d0		; bass
 	bsr.w	gsc_microwire_write_wait
 
+	; read coding block count
+	moveq	#0,d2
+	move.b	(a0)+,d2
+	subq.w	#2,d2
+	move.w	d2,gsc_coding_block_m2.w
+
 	; store chunk ptr
 	move.l	a0,gsc_cur_chunks_ptr.w
 	
 	; skip chunks
-	adda.l	d2,a0
+	adda.l	gsc_frame_chunks_size.w,a0
 
-	; read indexes count
-	move.w	(a0)+,gsc_cur_indexes_left.w
-	
 	; read coding blocks
-	move.w	(a0)+,gsc_coding_blocks_val.w
+	move.w	d2,d1
+	addq.w	#1,d1
+	lsr.w	#2,d1
+	moveq	#$f,d4
+	lea	gsc_coding_blocks_bits+2.w,a1
+	adda.w	d2,a1
+	adda.w	d2,a1
+	.cb_read_denibble_lp:
+		move.w	(a0)+,d0
+		
+		rept	4
+			rol.w	#4,d0
+			move.w	d0,d3
+			and.w	d4,d3
+			subq.w	#1,d3
+			move.w	d3,-(a1)
+		endr
+		
+		dbra.w	d1,.cb_read_denibble_lp
 	
 	; store indexes ptr
 	move.l	a0,gsc_cur_indexes_ptr.w
 	
-	; convert coding block values to coding bits
+	; convert coding block to (cumulated) coding values
+	tst.w	d2
+	bmi.s	.no_cumulation
 	
-	move.b	gsc_coding_blocks_val+0.w,d1
-	subq.b	#1,d1
-	moveq	#-1,d2
-	.lo_cb_val_lp:
-		addq.b	#1,d2
-		lsr.b	#1,d1
-		bne.s	.lo_cb_val_lp
-	move.b	d2,gsc_coding_blocks_bits+0.w
-	
-	move.b	gsc_coding_blocks_val+1.w,d1
-	subq.b	#1,d1
-	moveq	#-1,d2
-	.hi_cb_val_lp:
-		addq.b	#1,d2
-		lsr.b	#1,d1
-		bne.s	.hi_cb_val_lp
-	move.b	d2,gsc_coding_blocks_bits+1.w
-		
+	.cumulation:	
+
+		lea	gsc_coding_blocks_bits+2.w,a1
+		adda.w	d2,a1
+		adda.w	d2,a1
+		lea	-32-2(a1),a0
+		clr.w	(a0)
+		.cb_cumulate_lp:
+			move.w	-(a1),d0
+			addq.w	#1,d0
+			moveq	#1,d1
+			lsl.w	d0,d1
+			add.w	(a0),d1
+			move.w	d1,-(a0)
+			dbra.w	d2,.cb_cumulate_lp
+
+	.no_cumulation:	
+
 	; initial bit packing state
 	move.w	#0,gsc_bits_val.w
 	move.w	#0,gsc_bits_cnt.w
 	
-	movem.l	(sp)+,a0/d0/d1/d2
+	movem.l	(sp)+,a0/a1/d0/d1/d2/d3/d4
 	rts
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -384,8 +436,7 @@ gsc_init:
 	; initial state
 	move.w	#gsc_audio_buf_size,gsc_dmasnd_phase.w
 	move.w	#gsc_default_volume,gsc_volume.w
-	move.w	#0,gsc_coding_blocks_dummy.w
-
+	
 	; prepare decoding
 
 	cmpi.l	#$47534361,(a0)			; 'GSCa' header
@@ -402,7 +453,7 @@ gsc_init:
 	move.w	10(a0),d1			; 'ChunksPerFrame - 1'
 	addq.w	#1,d1
 	mulu.w	#gsc_chunk_size,d1
-	move.l	d1,gsc_frame_chunks_size
+	move.l	d1,gsc_frame_chunks_size.w
 	
 	lea	gsc_header_size(a0),a1
 	sub.l	#gsc_header_size,d0
@@ -411,8 +462,10 @@ gsc_init:
 	move.l	a1,gsc_end_ptr.w
 	
 	move.l	gsc_start_ptr.w,gsc_cur_indexes_ptr.w
-	add.w	#%10011000000+40,gsc_lmc_next_att.w
-	move.w	#-1,gsc_cur_indexes_left.w
+	move.w	#%10011000000,d0
+	add.w	gsc_volume.w,d0
+	move.w	d0,gsc_lmc_next_att.w
+	clr.w	gsc_cur_att_left.w
 
 	; set Microwire mask register
 	move.w	#$7ff,$ffff8924.w
