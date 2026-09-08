@@ -141,6 +141,16 @@ trap_gemdos:
 	rts		
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	; trap_bios
+trap_bios:
+	movem.l	a0-a2/d1-d2,trap_storage+4.w	; store regs that can be overwritten by trap
+	move.l	(sp)+,trap_storage.w		; store return address (also makes stack ready for trap)
+	trap	#13
+	move.l	trap_storage.w,-(sp)
+	movem.l	trap_storage+4.w,a0-a2/d1-d2
+	rts		
+
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; trap_xbios
 trap_xbios:
 	movem.l	a0-a2/d1-d2,trap_storage+4.w	; store regs that can be overwritten by trap
@@ -523,7 +533,7 @@ gsc_continue_load_track:
 	move.l	gsc_file_pos.w,a1
 
 	cmp.l	a0,a1
-	beq.s	.finished_loading
+	bhs.s	.finished_loading
 	
 	.no_finished_loading:
 		move.l	gsc_file_handle.w,d7
@@ -534,6 +544,8 @@ gsc_continue_load_track:
 		rts
 
 	.finished_loading:
+		bsr.w	gsc_close_track
+	
 		movem.l	(sp)+,a0/a1/d0/d7
 		rts
 
@@ -541,7 +553,17 @@ gsc_continue_load_track:
 	; gsc_close_track
 gsc_close_track:
 	move.l	gsc_file_handle.w,d7
-	bsr.w	close_file
+	beq.s	.no_close_file
+	
+	.close_file:
+	
+		bsr.w	close_file
+		clr.l	gsc_file_handle.w
+
+		lea	(file_loading_done_message),a0
+		bsr.w	print_text
+	
+	.no_close_file:
 	
 	rts
 	
@@ -630,15 +652,24 @@ main:
 	; continue loading GSC
 	bsr.w	gsc_continue_load_track
 	
+	; a key was pressed?
+	move.w	#2,-(sp)
+	move.w	#1,-(sp)
+	bsr.w	trap_bios
+	addq.l	#4,sp
+
+	tst.w	d0
+	beq.s	.main_loop
+
 	; read keyboard
-	move.w	#$ff,-(sp)
-	move.w	#6,-(sp)
-	bsr.w	trap_gemdos
+	move.w	#2,-(sp)
+	move.w	#2,-(sp)
+	bsr.w	trap_bios
 	addq.l	#4,sp
 
 	; if esc is pressed, stop playing
 	cmpi.b	#$1b,d0
-	beq.w	.finish
+	beq.s	.finish
 
 	cmpi.b	#'+',d0
 	bne.s	.no_up_volume
@@ -646,20 +677,16 @@ main:
 		bsr.w	gsc_get_volume
 		addq.w	#1,d0
 		bsr.w	gsc_set_volume
-		bra.s	.volume_end
+		bra.s	.main_loop
 .no_up_volume:
 
 	cmpi.b	#'-',d0
-	bne.s	.no_lo_volume
+	bne.s	.main_loop
 .lo_volume:
 		bsr.w	gsc_get_volume
 		subq.w	#1,d0
 		bsr.w	gsc_set_volume
-.no_lo_volume:
-
-.volume_end:
-
-	bra.s	.main_loop
+		bra.s	.main_loop
 	
 .finish:
 	; finish
@@ -703,6 +730,9 @@ gsc_track_message:
 
 file_read_message:
 	dc.b	13,10,"Reading file...",13,10,0	
+
+file_loading_done_message:
+	dc.b	"File loading done!",13,10,0	
 
 file_error_message:
 	dc.b	13,10,"Error reading file!",13,10,0	
