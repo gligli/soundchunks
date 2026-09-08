@@ -724,7 +724,7 @@ ikbd_enable_mouse:
 	dc.b	$08,$00
 
 gsc_welcome_message:
-	dc.b	13,10,"STeGSC, Atari STe SoundChunks replayer",13,10,"By GliGli, version 0.01b",13,10,13,10,0
+	dc.b	13,10,"STeGSC, Atari STe SoundChunks replayer",13,10,"By GliGli, version 0.02b",13,10,13,10,0
 
 gsc_track_message:
 	dc.b	"Please input GSC file name: (Esc,Return: Quit)",13,10,0
