@@ -61,22 +61,18 @@ lo_buf_gsc_end		EQU	lo_buf_main_end
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_timer_a_init_int: bokeh isr to cleanly start the DMA Sound System
 gsc_timer_a_init_int:
-	; disable irqs while decoding
-	move    #$2700,SR
-
-	move.l	a0,-(sp)
-
-	; set ST-MFP-13 Vector (Timer A)
-	lea	(gsc_timer_a_update_int),a0
-	move.l	a0,$134.w
-
 	; start DMA Sound System
 	move.b	#$3,$ffff8901.w
 	
+	; disable irqs while decoding
+	move    #$2700,SR
+
+	; set ST-MFP-13 Vector (Timer A)
+	move.l	#gsc_timer_a_update_int,$134.w
+
 	; interrupt not "in service" anymore
 	bclr.b	#5,$fffffa0f.w  
 
-	move.l	(sp)+,a0
 	rte
 	
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -105,7 +101,7 @@ gsc_timer_a_update_int:
 	; disable irqs while decoding
 	move    #$2700,SR
 
-	movem.l	a0-a4/d0-d7,-(sp)
+	movem.l	a0-a5/d0-d7,-(sp)
 
 	; sync timer on buffer start
 
@@ -162,6 +158,7 @@ gsc_timer_a_update_int:
 	move.l	gsc_cur_indexes_ptr.w,a2
 	lea	gsc_coding_blocks_bits.w,a3
 	move.l	gsc_cur_chunks_ptr.w,a4
+	move.w	gsc_coding_block_m2.w,a5
 	move.w	gsc_bits_val.w,d5
 	move.w	gsc_bits_cnt.w,d6
 	
@@ -190,7 +187,7 @@ gsc_timer_a_update_int:
 		; decode chunk index
 		
 			; decode coding block index
-		move.w	gsc_coding_block_m2.w,d2
+		move.w	a5,d2
 		bmi.s	.no_coding_bits
 
 		.has_coding_bits:
@@ -293,7 +290,7 @@ gsc_timer_a_update_int:
 	; interrupt not "in service" anymore
 	bclr.b	#5,$fffffa0f.w  		
 
-	movem.l	(sp)+,a0-a4/d0-d7
+	movem.l	(sp)+,a0-a5/d0-d7
 	rte
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
