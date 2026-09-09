@@ -1,9 +1,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  VARIABLES  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 lo_var_base	EQU	$800
-screen_res_save	EQU	lo_var_base-2
+ssp_save	EQU	lo_var_base-4
+screen_res_save	EQU	ssp_save-2
 palette_save	EQU	screen_res_save-6
-mfp_int_save	EQU	palette_save-8
+mfp_int_save	EQU	palette_save-4
 vbl_int_save	EQU	mfp_int_save-4
 trap_storage	EQU	vbl_int_save-24
 vbl_idx		EQU	trap_storage-4
@@ -109,11 +110,17 @@ start:
 	clr.w	-(sp)				; clear word 
 	move.w	#$4a,-(sp)			; Mskrink opcode 
 	trap	#1				; call GEMDOS 
-	lea	$0c(sp),sp			; correct stack pointer
+	lea	12(sp),sp			; correct stack pointer
 		
-	pea	main				; Push address pointer to stack 
-	move.w	#$26,-(sp)			; XBIOS call to Supexec.
-	trap	#14				; Software interript #14 -> XBIOS
+	; super
+	clr.l	-(sp)
+	move.w	#$20,-(sp)
+	trap	#1
+	addq.l	#6,sp
+	
+	move.l	d0,ssp_save.w
+	
+	bra.w	main
 
 vbl:
 	bset.b	#0,vbl_done.w
@@ -198,7 +205,6 @@ clear_screen_lp:
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; init_ints
 init_ints:
-	move.l	a0,-(sp)
 
 	; disable irqs
 	move    #$2700,SR
@@ -208,18 +214,15 @@ init_ints:
 
 	; set Level 6 Int Autovector (MFP)
 	move.l	$78.w,mfp_int_save.w
-	lea	(dummy_vector),a0
-	move.l	a0,$78.w
+	move.l	#dummy_vector,$78.w
 	
 	; set Level 4 Int Autovector (VBL)
 	move.l	$70.w,vbl_int_save.w
-	lea	(vbl),a0
-	move.l	a0,$70.w
+	move.l	#vbl,$70.w
 
 	; enable irqs
 	move    #$2300,SR
 
-	move.l	(sp)+,a0
 	rts
 	
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -516,6 +519,11 @@ gsc_load_track:
 	bsr.w	trap_xbios
 	lea	12(sp),sp
 
+	; restore palette
+	move.w	palette_save+0.w,$ffff8240.w
+	move.w	palette_save+2.w,$ffff8246.w
+	move.w	palette_save+4.w,$ffff825e.w
+
 	; restore mouse
 	pea	(ikbd_enable_mouse)
 	move.w	#0,-(sp)
@@ -523,15 +531,21 @@ gsc_load_track:
 	bsr.w	trap_xbios
 	addq.l	#8,sp
 
-	; restore palette
-	move.w	palette_save+0.w,$ffff8240.w
-	move.w	palette_save+2.w,$ffff8246.w
-	move.w	palette_save+4.w,$ffff825e.w
+	; wait vbl
+	move.w	#37,-(sp)
+	bsr.w	trap_xbios
+	addq.l	#2,sp
+
+	; super (back to user)
+	move.l	ssp_save.w,-(sp)
+	move.w	#$20,-(sp)
+	trap	#1		; not trap_gemdos to avoid accessing low mem
+	addq.l	#6,sp
 
 	; terminate program
 	move.w	#0,-(sp)
-	move.l	#$4c,-(sp)
-	bsr.w	trap_gemdos
+	move.w	#$4c,-(sp)
+	trap	#1		; not trap_gemdos to avoid accessing low mem
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; gsc_continue_load_track
