@@ -961,12 +961,17 @@ end;
 procedure TFrame.ComputeAttenuations;
 var
   iChannel, iChunk, iSample, iAtt, attCnt, pos, loIdx, hiIdx: Integer;
-  att: Byte;
+  changed: Boolean;
+  att, att2: Byte;
   chunkBuffer: TSmallIntDynArray;
+  attenuations: TByteDynArray;
 begin
+  attCnt := (ChunkCount - 1) div encoder.ChunksPerAttenuation + 1;
+  SetLength(attenuations, attCnt);
   SetLength(chunkBuffer, encoder.ChunksPerAttenuation * encoder.ChunkSize * encoder.ChannelCount);
 
-  attCnt := (ChunkCount - 1) div encoder.ChunksPerAttenuation + 1;
+  // compute attenuations
+
   for iAtt := 0 to attCnt - 1 do
   begin
     loIdx := iAtt * encoder.ChunksPerAttenuation;
@@ -982,6 +987,46 @@ begin
         end;
 
     att := TEncoder.SolveAttenuation(pos, @chunkBuffer[0]);
+
+    attenuations[iAtt] := att;
+  end;
+
+{$ifdef ATARI_STE}
+
+  // level attenuations (to avoid decoding clicks)
+
+  repeat
+    changed := False;
+
+    for iAtt := 0 to attCnt - 2 do
+    begin
+      att := attenuations[iAtt];
+      att2 := attenuations[iAtt + 1];
+
+      if att < att2 - 1 then
+      begin
+        attenuations[iAtt + 1] -= (att2 - att) shr 1;
+        changed := True;
+      end
+      else if att2 < att - 1 then
+      begin
+        attenuations[iAtt] -= (att - att2) shr 1;
+        changed := True;
+      end
+    end;
+
+  until not changed;
+
+{$endif ATARI_STE}
+
+  // apply attenuations
+
+  for iAtt := 0 to attCnt - 1 do
+  begin
+    loIdx := iAtt * encoder.ChunksPerAttenuation;
+    hiIdx := Min((iAtt + 1) * encoder.ChunksPerAttenuation, ChunkCount) - 1;
+
+    att := attenuations[iAtt];
 
     for iChunk := loIdx to hiIdx do
       for iChannel := 0 to encoder.ChannelCount - 1 do
@@ -1773,7 +1818,7 @@ function TEncoder.CreateEmphasisFilter: TEmphasisFilter;
 begin
 {$ifdef ATARI_STE}
   Result := TLMC1992Filter.Create(SampleRate);
-  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.NEUTRAL_TONE + 6, TLMC1992Filter.NEUTRAL_TONE - 5);
+  TLMC1992Filter(Result).Set_Tone_Level(TLMC1992Filter.NEUTRAL_TONE + 4, TLMC1992Filter.NEUTRAL_TONE - 5);
 {$else}
   Result := TDeltaFilter.Create(SampleRate);
 {$endif}
