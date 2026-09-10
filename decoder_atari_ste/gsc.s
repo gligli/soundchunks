@@ -44,7 +44,8 @@ gsc_cur_indexes_ptr	EQU	gsc_cur_chunks_ptr-4
 gsc_cur_att_left	EQU	gsc_cur_indexes_ptr-2
 gsc_dmasnd_phase	EQU	gsc_cur_att_left-2
 gsc_lmc_next_bass_treb	EQU	gsc_dmasnd_phase-4
-gsc_lmc_next_att	EQU	gsc_lmc_next_bass_treb-2
+gsc_lmc_has_next_att	EQU	gsc_lmc_next_bass_treb-2
+gsc_lmc_next_att	EQU	gsc_lmc_has_next_att-2
 gsc_bits_val		EQU	gsc_lmc_next_att-2
 gsc_bits_cnt		EQU	gsc_bits_val-2
 gsc_coding_blocks_bits	EQU	gsc_bits_cnt-32
@@ -125,8 +126,19 @@ gsc_timer_a_update_int:
 
 	; send attenuation to LMC1992 thru Microwire (when this command takes effect in the LMC, we are synced with the buffer start)
 	
+	tst.b	gsc_lmc_has_next_att.w
+	beq.s	.no_new_lmc_att
+	
+.new_lmc_att:
+
 	move.w	gsc_lmc_next_att.w,d0
+	neg.w	d0
+	add.w	#%10011000000,d0
+	add.w	gsc_volume.w,d0
 	bsr.w	gsc_microwire_write_wait
+	sf.b	gsc_lmc_has_next_att.w
+	
+.no_new_lmc_att:
 	
 	; send new bass/treble levels to LMC1992 (after a new frame)
 	
@@ -170,12 +182,20 @@ gsc_timer_a_update_int:
 	move.w	gsc_bits_cnt.w,d6
 	
 	; decode attenuation
+
+	get_bit	carry,1
+	bcc.s	.no_new_att
+	
+.new_att:
+
 	moveq	#0,d0
-	get_bits d0,4
-	neg.w	d0
-	add.w	#%10011000000,d0
-	add.w	gsc_volume.w,d0
-	move.w	d0,gsc_lmc_next_att.w
+	get_bit d0,0
+	add.w	d0,d0
+	subq.w	#1,d0
+	add.w	d0,gsc_lmc_next_att.w
+	st.b	gsc_lmc_has_next_att.w
+
+.no_new_att:
 	
 	; decode mirrors & chunk index & upload chunk data to dmasnd buffer
 	move.w	#gsc_chunks_per_att-1,d7
@@ -369,12 +389,21 @@ gsc_next_frame:
 
 	move.l	d0,gsc_lmc_next_bass_treb.w
 
-	; read coding block count
-	moveq	#0,d2
-	move.b	(a0)+,d2
-	subq.w	#2,d2
+	; read coding block count (also read first attenuation)
+	moveq	#0,d0
+	move.b	(a0)+,d0
+	
+		; store coding block count minus 2
+	move.w	d0,d2
+	andi.w	#$000f,d2
+	subq.w	#1,d2
 	move.w	d2,gsc_coding_block_m2.w
-
+	
+		; store first attenuation
+	lsr.b	#4,d0
+	move.w	d0,gsc_lmc_next_att.w
+	st.b	gsc_lmc_has_next_att.w
+	
 	; store chunk ptr
 	move.l	a0,gsc_cur_chunks_ptr.w
 	
@@ -475,9 +504,8 @@ gsc_init:
 	move.l	a1,gsc_end_ptr.w
 	
 	move.l	gsc_start_ptr.w,gsc_cur_indexes_ptr.w
-	move.w	#%10011000000,d0
-	add.w	gsc_volume.w,d0
-	move.w	d0,gsc_lmc_next_att.w
+	clr.w	gsc_lmc_next_att.w
+	sf.b	gsc_lmc_has_next_att.w
 	clr.w	gsc_cur_att_left.w
 	clr.l	gsc_lmc_next_bass_treb.w
 
