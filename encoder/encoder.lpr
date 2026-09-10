@@ -11,18 +11,20 @@ const
 {$ifdef ATARI_STE}
   CStreamVersion = 7;
 
-  CMaxAttenuationBits = 4;
+  CMaxAttenuationBits = 2;
+  CMaxAttenuation = 12;
   CAttenuationLawDecibels = 2.0;
+  CMinChunksPerFrame = 8;
+  CMaxChunksPerFrame = 1024;
 {$else}
   CStreamVersion = 7;
 
   CMaxAttenuationBits = 6;
+  CMaxAttenuation = (1 shl CMaxAttenuationBits) - 1;
   CAttenuationLawDecibels = 0.75;
-{$endif}
-
   CMinChunksPerFrame = 8;
   CMaxChunksPerFrame = 65536;
-  CMaxAttenuation = (1 shl CMaxAttenuationBits) - 1;
+{$endif}
 
 type
   TEncoder = class;
@@ -1220,7 +1222,7 @@ begin
   AStream.WriteWord(NtoBE(WORD(plainChunks.Count div (encoder.ChannelCount * encoder.ChunksPerAttenuation) - 1)));
 
   AStream.WriteByte((TLMC1992Filter(filter[0]).bass_level shl 4) or TLMC1992Filter(filter[0]).treb_level);
-  AStream.WriteByte(dstPiggyCoder.CodingBlocksCount);
+  AStream.WriteByte((plainChunks[0].dstAttenuation shl 4) or (dstPiggyCoder.CodingBlocksCount - 1));
 
   Assert(encoder.ChunkBitDepth = 8, 'ChunkBitDepth not supported');
   cl := reducedChunks;
@@ -1384,10 +1386,12 @@ end;
 procedure TFrame.MakeCoding;
 var
   iChunk: Integer;
+  att, prevAtt: Byte;
   chunk: TChunk;
   pCode: ^TPiggyCoder.TCode;
   piggyCodes: TPiggyCoder.TCodeArray;
 begin
+  prevAtt := plainChunks[0].dstAttenuation;
   SetLength(piggyCodes, plainChunks.Count);
   for iChunk := 0 to plainChunks.Count - 1 do
   begin
@@ -1398,8 +1402,25 @@ begin
 
     if iChunk mod (encoder.ChunksPerAttenuation * encoder.ChannelCount) = 0 then
     begin
+      att := chunk.dstAttenuation;
+
+{$ifdef ATARI_STE}
+      pCode^.ExtraBits := Ord(att <> prevAtt) or (pCode^.ExtraBits shl 1);
+      pCode^.ExtraBitCount := 1;
+
+      if att <> prevAtt then
+      begin
+        Assert(Abs(prevAtt - att) = 1);
+
+        pCode^.ExtraBits := Ord(att > prevAtt) or (pCode^.ExtraBits shl 1);
+        pCode^.ExtraBitCount += 1;
+
+        prevAtt := att;
+      end;
+{$else}
       pCode^.ExtraBits := chunk.dstAttenuation;
       pCode^.ExtraBitCount := CMaxAttenuationBits;
+{$endif}
     end;
 
     pCode^.ExtraBits := Ord(chunk.dstNegative) or (pCode^.ExtraBits shl 1);
@@ -1543,7 +1564,11 @@ end;
 
 procedure TEncoder.PrepareFrames;
 const
+{$ifdef ATARI_STE}
+  CCompressionRatio = 0.8;
+{$else}
   CCompressionRatio = 0.54;
+{$endif}
   CAttenuationMilliseconds = 2.0;
   CVFRTransitionFreq = 250.0;
 var
@@ -2106,7 +2131,7 @@ begin
   RandSeed := $42381337;
 
   for iBit := 2 to 12 do
-    for iAtt := 0 to (1 shl CMaxAttenuationBits) - 1 do
+    for iAtt := 0 to CMaxAttenuation do
       for iNegative := False to True do
         for iSample := 0 to CLen - 1 do
         begin
