@@ -112,14 +112,6 @@ gsc_timer_a_update_int:
 	lea	(gsc_audio_buf+gsc_lmc_sample_skew),a1
 	add.w	gsc_dmasnd_phase.w,a1
 
-	; wait any change on "Frame address counter", so that just after, nothing can change and we can read the entire value
-	move.b	$ffff890d.w,d1
-	.wait_change_lp:
-		move.b	d1,d0	
-		move.b	$ffff890d.w,d1
-		cmp.b	d1,d0
-		beq.s	.wait_change_lp
-
 	; get relative sample position
 	movep.l	$ffff8907(a0),d1
 	andi.l	#$00ffffff,d1
