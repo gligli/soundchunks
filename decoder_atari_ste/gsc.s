@@ -43,7 +43,8 @@ gsc_cur_chunks_ptr	EQU	gsc_coding_block_m2-4
 gsc_cur_indexes_ptr	EQU	gsc_cur_chunks_ptr-4
 gsc_cur_att_left	EQU	gsc_cur_indexes_ptr-2
 gsc_dmasnd_phase	EQU	gsc_cur_att_left-2
-gsc_lmc_next_att	EQU	gsc_dmasnd_phase-2
+gsc_lmc_next_bass_treb	EQU	gsc_dmasnd_phase-4
+gsc_lmc_next_att	EQU	gsc_lmc_next_bass_treb-2
 gsc_bits_val		EQU	gsc_lmc_next_att-2
 gsc_bits_cnt		EQU	gsc_bits_val-2
 gsc_coding_blocks_bits	EQU	gsc_bits_cnt-32
@@ -134,6 +135,20 @@ gsc_timer_a_update_int:
 	
 	move.w	gsc_lmc_next_att.w,d0
 	bsr.w	gsc_microwire_write_wait
+	
+	; send new bass/treble levels to LMC1992 (after a new frame)
+	
+	move.l	gsc_lmc_next_bass_treb.w,d0
+	beq.s	.no_new_lmc_bt
+
+.new_lmc_bt:
+	
+	bsr.w	gsc_microwire_write_wait
+	swap.w	d0
+	bsr.w	gsc_microwire_write_wait
+	clr.l	gsc_lmc_next_bass_treb.w
+	
+.no_new_lmc_bt:
 	
 	; actual decoding
 
@@ -348,17 +363,19 @@ gsc_next_frame:
 	moveq	#0,d1
 	move.b	(a0)+,d1
 	
-	; apply treble
+	; get treble LMC command
 	move.w	d1,d0
 	andi.w	#$000f,d0
 	ori.w	#%10010000000,d0		; treble
-	bsr.w	gsc_microwire_write_wait
 	
-	; apply bass
+	swap.w	d0
+	
+	; get bass LMC command
 	move.w	d1,d0
 	lsr.w	#4,d0
 	ori.w	#%10001000000,d0		; bass
-	bsr.w	gsc_microwire_write_wait
+
+	move.l	d0,gsc_lmc_next_bass_treb.w
 
 	; read coding block count
 	moveq	#0,d2
@@ -437,9 +454,9 @@ gsc_init:
 	; clear audio buffer
 	lea	(gsc_audio_buf),a1
 	moveq	#gsc_audio_dblbuf_size/4-1,d1
-	.clr_cmls_lp:
+	.clr_audio_buf_lp:
 		clr.l	(a1)+
-		dbra.w	d1,.clr_cmls_lp
+		dbra.w	d1,.clr_audio_buf_lp
 
 	; prepare decoding
 
@@ -470,6 +487,7 @@ gsc_init:
 	add.w	gsc_volume.w,d0
 	move.w	d0,gsc_lmc_next_att.w
 	clr.w	gsc_cur_att_left.w
+	clr.l	gsc_lmc_next_bass_treb.w
 
 	; set Microwire mask register
 	move.w	#$7ff,$ffff8924.w
@@ -482,7 +500,7 @@ gsc_init:
 	bsr.w	gsc_microwire_write_wait
 	move.w	#%10001000000+12,d0		; bass
 	bsr.w	gsc_microwire_write_wait
-	move.w	#%10000000010,d0 		; mixer
+	move.w	#%10000000001,d0 		; mixer
 	bsr.w	gsc_microwire_write_wait
 
 	; 25033Hz Mono Looping DMA Sound System
@@ -515,8 +533,7 @@ gsc_init:
 
 	; set ST-MFP-13 Vector (Timer A)
 	move.l	$134.w,gsc_timer_a_int_save.w
-	lea	(gsc_timer_a_init_int),a0
-	move.l	a0,$134.w
+	move.l	#gsc_timer_a_init_int,$134.w
 
 	; start Timer A
 	bclr.b	#4,$fffffa19.w
